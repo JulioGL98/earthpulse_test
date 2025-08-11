@@ -1,15 +1,19 @@
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional, Any
 
 import uvicorn
 from bson import ObjectId
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from minio import Minio
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, field_validator
 from pydantic_core import core_schema
+
+# NUEVAS IMPORTACIONES PARA AUTH
+from jose import JWTError, jwt
+from passlib.context import CryptContext
 
 # --- Configuración de la Aplicación FastAPI ---
 app = FastAPI(title="Google Drive Clone API", description="API para gestionar archivos, simulando la funcionalidad de Google Drive.", version="1.0.0")
@@ -34,6 +38,7 @@ client = AsyncIOMotorClient(DATABASE_URL)
 db = client.file_management
 file_collection = db.get_collection("files")
 folder_collection = db.get_collection("folders")
+user_collection = db.get_collection("users")  # Nueva colección de usuarios
 
 # --- Configuración de Almacenamiento (MinIO) ---
 MINIO_URL = os.getenv("MINIO_URL", "minio:9000")
@@ -138,6 +143,29 @@ class CopyFolder(BaseModel):
     parent_folder_id: Optional[str] = Field(None, description="ID de la carpeta padre destino (null para raíz)")
 
 
+class UserBase(BaseModel):
+    username: str
+
+
+class UserCreate(UserBase):
+    password: str
+
+
+class UserInDB(UserBase):
+    hashed_password: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
 # --- Funciones de Ayuda ---
 def create_bucket_if_not_exists():
     found = minio_client.bucket_exists(BUCKET_NAME)
@@ -148,10 +176,76 @@ def create_bucket_if_not_exists():
         print(f"Bucket '{BUCKET_NAME}' ya existe.")
 
 
+# --- Config Auth / JWT ---
+SECRET_KEY = os.getenv("SECRET_KEY", "change_me_dev_secret_key")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 día
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+# --- Utilidades de password ---
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+def get_password_hash(password: str) -> str:
+    return pwd_context.hash(password)
+
+
+# --- Utilidades JWT ---
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    to_encode = data.copy()
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+
+async def get_user(username: str) -> Optional[dict]:
+    return await user_collection.find_one({"username": username})
+
+
+# Middleware de autenticación (protege todos menos /, /health, /auth/*)
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path
+    # Permitir rutas públicas y preflight CORS
+    if request.method == "OPTIONS" or path in ["/", "/health"] or path.startswith("/auth/"):
+        return await call_next(request)
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="No autorizado: token faltante")
+    token = auth_header.split(" ", 1)[1].strip()
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=401, detail="Token inválido")
+        user = await get_user(username)
+        if not user:
+            raise HTTPException(status_code=401, detail="Usuario no encontrado")
+        request.state.user = user
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+    response = await call_next(request)
+    return response
+
+
 # --- Eventos de Inicio de la Aplicación ---
 @app.on_event("startup")
 async def startup_event():
     create_bucket_if_not_exists()
+    # Crear usuario admin si no existe
+    admin = await user_collection.find_one({"username": "admin"})
+    if not admin:
+        await user_collection.insert_one(
+            {
+                "username": "admin",
+                "hashed_password": get_password_hash("admin123"),
+                "created_at": datetime.utcnow(),
+            }
+        )
+        print("Usuario admin creado: admin / admin123")
 
 
 # --- Endpoints de la API ---
@@ -726,6 +820,27 @@ async def copy_folder(folder_id: str, copy_data: CopyFolder):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al copiar carpeta: {str(e)}")
+
+
+# --- Endpoints de autenticación ---
+@app.post("/auth/register", response_model=Token, tags=["Auth"])
+async def register(user: UserCreate):
+    existing = await get_user(user.username)
+    if existing:
+        raise HTTPException(status_code=400, detail="El usuario ya existe")
+    hashed = get_password_hash(user.password)
+    await user_collection.insert_one({"username": user.username, "hashed_password": hashed, "created_at": datetime.utcnow()})
+    token = create_access_token({"sub": user.username})
+    return Token(access_token=token)
+
+
+@app.post("/auth/login", response_model=Token, tags=["Auth"])
+async def login(data: LoginRequest):
+    user = await get_user(data.username)
+    if not user or not verify_password(data.password, user.get("hashed_password", "")):
+        raise HTTPException(status_code=401, detail="Credenciales inválidas")
+    token = create_access_token({"sub": data.username})
+    return Token(access_token=token)
 
 
 # --- Punto de Entrada para Ejecutar la Aplicación ---
