@@ -146,6 +146,10 @@
     if ($showAuthScreen) return;
     isLoading.set(true);
     errorMessage.set('');
+    
+    // Limpiar cache de miniaturas al cambiar de carpeta
+    clearThumbnailCache();
+    
     try {
       const response = await authFetch(`${API_URL}/folders/${folderId}/content`);
       if (!response.ok) throw new Error('Error al cargar el contenido de la carpeta.');
@@ -709,6 +713,46 @@
     }
   }
 
+  // Cache para miniaturas de imagen
+  const thumbnailCache = new Map();
+
+  async function loadThumbnail(fileId) {
+    // Si ya está en cache, devolverla
+    if (thumbnailCache.has(fileId)) {
+      return thumbnailCache.get(fileId);
+    }
+
+    try {
+      const resp = await authFetch(`${API_URL}/files/download/${fileId}`);
+      if (!resp.ok) throw new Error('Error al cargar miniatura');
+
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      
+      // Guardar en cache
+      thumbnailCache.set(fileId, url);
+      return url;
+    } catch (error) {
+      console.error('Error loading thumbnail:', error);
+      return null;
+    }
+  }
+
+  function isImageFile(fileType) {
+    return fileType && (fileType.startsWith('image/') || 
+           ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'].includes(fileType.toLowerCase()));
+  }
+
+  // Limpiar cache cuando se cambie de carpeta
+  function clearThumbnailCache() {
+    thumbnailCache.forEach(url => {
+      if (url && url.startsWith('blob:')) {
+        URL.revokeObjectURL(url);
+      }
+    });
+    thumbnailCache.clear();
+  }
+
   async function loadSelectorFolderContent(folderId = 'root') {
     try {
       const response = await authFetch(`${API_URL}/folders?parent_folder_id=${folderId}`);
@@ -795,6 +839,9 @@
   onDestroy(() => {
     const currentContent = $previewContent;
     if (currentContent && currentContent.startsWith('blob:')) URL.revokeObjectURL(currentContent);
+    
+    // Limpiar cache de miniaturas
+    clearThumbnailCache();
   });
   let debounceTimer;
   $: if ($searchTerm !== undefined && $currentFolder) {
@@ -1312,7 +1359,28 @@
                     class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
                   >
                     <div class="text-center">
-                      <div class="text-4xl mb-2">{getFileIcon(file.file_type)}</div>
+                      {#if isImageFile(file.file_type)}
+                        <div class="w-16 h-16 mx-auto mb-2 bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center">
+                          {#await loadThumbnail(file._id)}
+                            <div class="text-2xl text-gray-400">🖼️</div>
+                          {:then thumbnailUrl}
+                            {#if thumbnailUrl}
+                              <img
+                                src={thumbnailUrl}
+                                alt={file.filename}
+                                class="w-full h-full object-cover"
+                                loading="lazy"
+                              />
+                            {:else}
+                              <div class="text-2xl text-gray-400">🖼️</div>
+                            {/if}
+                          {:catch}
+                            <div class="text-2xl text-gray-400">🖼️</div>
+                          {/await}
+                        </div>
+                      {:else}
+                        <div class="text-4xl mb-2">{getFileIcon(file.file_type)}</div>
+                      {/if}
                       {#if $editingFileId === file._id}
                         <input
                           type="text"
