@@ -789,60 +789,12 @@
       </div>
     </nav>
 
-    <!-- Barra de Acciones en Lote -->
-    {#if $showBulkActions}
-      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center space-x-4">
-            <span class="text-sm font-medium text-blue-800">
-              {$selectedFiles.size + $selectedFolders.size} elemento(s) seleccionado(s)
-            </span>
-            <button
-              on:click={clearSelections}
-              class="text-sm text-blue-600 hover:text-blue-800 underline"
-            >
-              Limpiar selección
-            </button>
-          </div>
-          
-          <div class="flex items-center space-x-2">
-            <button
-              on:click={deleteSelectedItems}
-              class="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors flex items-center space-x-2"
-            >
-              <span>🗑️</span>
-              <span>Eliminar seleccionados</span>
-            </button>
-            
-            <!-- Aquí se pueden agregar más acciones como mover, copiar, etc. -->
-            <button
-              on:click={moveSelectedItems}
-              class="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-2"
-              title="Mover elementos seleccionados"
-            >
-              <span>📁</span>
-              <span>Mover</span>
-            </button>
-            
-            <button
-              on:click={copySelectedItems}
-              class="px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition-colors flex items-center space-x-2"
-              title="Copiar elementos seleccionados"
-            >
-              <span>📋</span>
-              <span>Copiar</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    {/if}
-
     <!-- Toolbar -->
     <div class="bg-white rounded-lg shadow-sm p-4 mb-6">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
         
         <!-- Search and Create Controls -->
-        <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
+        <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4 items-center">
           <!-- Search -->
           <div class="relative">
             <input
@@ -861,6 +813,48 @@
           >
             📁 Nueva Carpeta
           </button>
+
+          <!-- Información de Selección Múltiple -->
+          {#if $showBulkActions}
+            <div class="flex items-center space-x-3 bg-blue-50 px-3 py-2 rounded-lg border border-blue-200">
+              <span class="text-sm font-medium text-blue-800">
+                {$selectedFiles.size + $selectedFolders.size} seleccionados
+              </span>
+              <button
+                on:click={clearSelections}
+                class="text-xs text-blue-600 hover:text-blue-800 underline"
+              >
+                Desmarcar
+              </button>
+              
+              <!-- Botones de acción compactos -->
+              <div class="flex items-center space-x-1">
+                <button
+                  on:click={deleteSelectedItems}
+                  class="p-1.5 bg-red-600 text-white text-xs rounded hover:bg-red-700 transition-colors"
+                  title="Eliminar seleccionados"
+                >
+                  🗑️
+                </button>
+                
+                <button
+                  on:click={moveSelectedItems}
+                  class="p-1.5 bg-green-600 text-white text-xs rounded hover:bg-green-700 transition-colors"
+                  title="Mover seleccionados"
+                >
+                  📁
+                </button>
+                
+                <button
+                  on:click={copySelectedItems}
+                  class="p-1.5 bg-purple-600 text-white text-xs rounded hover:bg-purple-700 transition-colors"
+                  title="Copiar seleccionados"
+                >
+                  📋
+                </button>
+              </div>
+            </div>
+          {/if}
         </div>
 
         <!-- Sort Controls -->
