@@ -8,7 +8,7 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Form
 from fastapi.middleware.cors import CORSMiddleware
 from minio import Minio
 from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic_core import core_schema
 
 # --- Configuración de la Aplicación FastAPI ---
@@ -108,6 +108,7 @@ class CreateFolder(BaseModel):
 class UpdateFileName(BaseModel):
     new_filename: str = Field(..., min_length=1, max_length=255, description="Nuevo nombre del archivo")
 
+    @field_validator("new_filename")
     @classmethod
     def validate_filename(cls, v):
         if not v or not v.strip():
@@ -119,6 +120,22 @@ class UpdateFileName(BaseModel):
             raise ValueError(f"El nombre del archivo contiene caracteres no válidos: {invalid_chars}")
 
         return v.strip()
+
+
+class MoveFile(BaseModel):
+    folder_id: Optional[str] = Field(None, description="ID de la carpeta destino (null para raíz)")
+
+
+class MoveFolder(BaseModel):
+    parent_folder_id: Optional[str] = Field(None, description="ID de la carpeta padre destino (null para raíz)")
+
+
+class CopyFile(BaseModel):
+    folder_id: Optional[str] = Field(None, description="ID de la carpeta destino (null para raíz)")
+
+
+class CopyFolder(BaseModel):
+    parent_folder_id: Optional[str] = Field(None, description="ID de la carpeta padre destino (null para raíz)")
 
 
 # --- Funciones de Ayuda ---
@@ -255,7 +272,13 @@ async def list_files(folder_id: Optional[str] = None, search: Optional[str] = No
 
 
 @app.get("/files/download/{file_id}")
-async def download_file(file_id: str):
+async def download_file(file_id: str, inline: Optional[bool] = False):
+    """
+    Descarga un archivo o lo muestra inline para preview.
+
+    - **file_id**: ID del archivo
+    - **inline**: Si es True, permite mostrar el archivo en el navegador (para preview)
+    """
     if not ObjectId.is_valid(file_id):
         raise HTTPException(status_code=400, detail="ID de archivo inválido")
 
@@ -269,9 +292,17 @@ async def download_file(file_id: str):
 
         from fastapi.responses import StreamingResponse
 
-        return StreamingResponse(
-            response.stream(32 * 1024), media_type=file_metadata["file_type"], headers={"Content-Disposition": f"attachment; filename={file_metadata['filename']}"}
-        )
+        # Configurar headers según el tipo de archivo y parámetro inline
+        headers = {}
+
+        if inline and file_metadata["file_type"] in ["application/pdf", "image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"]:
+            # Para preview: permitir mostrar inline
+            headers["Content-Disposition"] = f"inline; filename={file_metadata['filename']}"
+        else:
+            # Para descarga: forzar attachment
+            headers["Content-Disposition"] = f"attachment; filename={file_metadata['filename']}"
+
+        return StreamingResponse(response.stream(32 * 1024), media_type=file_metadata["file_type"], headers=headers)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al descargar el archivo: {str(e)}")
@@ -451,6 +482,250 @@ async def get_folder_content(folder_id: str):
             file["folder_id"] = str(file["folder_id"])
 
     return {"folders": folders, "files": files, "folder_id": folder_id, "total_items": len(folders) + len(files)}
+
+
+# --- Endpoints para Mover Elementos ---
+
+
+@app.patch("/files/{file_id}/move", response_model=FileMetadata)
+async def move_file(file_id: str, move_data: MoveFile):
+    """
+    Mueve un archivo a una carpeta diferente.
+
+    - **file_id**: ID del archivo a mover
+    - **folder_id**: ID de la carpeta destino (null para mover a raíz)
+    """
+    if not ObjectId.is_valid(file_id):
+        raise HTTPException(status_code=400, detail="ID de archivo inválido")
+
+    # Verificar que el archivo existe
+    file_metadata = await file_collection.find_one({"_id": ObjectId(file_id)})
+    if not file_metadata:
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+
+    # Validar carpeta destino si se proporciona
+    target_folder_id = None
+    target_path = "/"
+
+    if move_data.folder_id:
+        if not ObjectId.is_valid(move_data.folder_id):
+            raise HTTPException(status_code=400, detail="ID de carpeta destino inválido")
+
+        target_folder = await folder_collection.find_one({"_id": ObjectId(move_data.folder_id)})
+        if not target_folder:
+            raise HTTPException(status_code=404, detail="Carpeta destino no encontrada")
+
+        target_folder_id = ObjectId(move_data.folder_id)
+        target_path = target_folder["path"]
+
+    try:
+        # Actualizar archivo
+        update_result = await file_collection.update_one({"_id": ObjectId(file_id)}, {"$set": {"folder_id": target_folder_id, "path": target_path}})
+
+        if update_result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Archivo no encontrado")
+
+        # Devolver archivo actualizado
+        updated_file = await file_collection.find_one({"_id": ObjectId(file_id)})
+        return updated_file
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al mover archivo: {str(e)}")
+
+
+@app.patch("/folders/{folder_id}/move", response_model=FolderMetadata)
+async def move_folder(folder_id: str, move_data: MoveFolder):
+    """
+    Mueve una carpeta a una ubicación diferente.
+
+    - **folder_id**: ID de la carpeta a mover
+    - **parent_folder_id**: ID de la carpeta padre destino (null para mover a raíz)
+    """
+    if not ObjectId.is_valid(folder_id):
+        raise HTTPException(status_code=400, detail="ID de carpeta inválido")
+
+    # Verificar que la carpeta existe
+    folder = await folder_collection.find_one({"_id": ObjectId(folder_id)})
+    if not folder:
+        raise HTTPException(status_code=404, detail="Carpeta no encontrada")
+
+    # Validar carpeta padre destino si se proporciona
+    target_parent_id = None
+    target_path = f"/{folder['name']}/"
+
+    if move_data.parent_folder_id:
+        if not ObjectId.is_valid(move_data.parent_folder_id):
+            raise HTTPException(status_code=400, detail="ID de carpeta padre destino inválido")
+
+        target_parent = await folder_collection.find_one({"_id": ObjectId(move_data.parent_folder_id)})
+        if not target_parent:
+            raise HTTPException(status_code=404, detail="Carpeta padre destino no encontrada")
+
+        # Verificar que no se esté moviendo a sí misma o a una subcarpeta
+        if move_data.parent_folder_id == folder_id:
+            raise HTTPException(status_code=400, detail="No se puede mover una carpeta a sí misma")
+
+        target_parent_id = ObjectId(move_data.parent_folder_id)
+        target_path = f"{target_parent['path'].rstrip('/')}/{folder['name']}/"
+
+    # Verificar que no existe una carpeta con el mismo nombre en el destino
+    existing_folder = await folder_collection.find_one({"name": folder["name"], "parent_folder_id": target_parent_id, "_id": {"$ne": ObjectId(folder_id)}})
+    if existing_folder:
+        raise HTTPException(status_code=400, detail="Ya existe una carpeta con ese nombre en el destino")
+
+    try:
+        # Actualizar carpeta
+        update_result = await folder_collection.update_one({"_id": ObjectId(folder_id)}, {"$set": {"parent_folder_id": target_parent_id, "path": target_path}})
+
+        if update_result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Carpeta no encontrada")
+
+        # TODO: Actualizar rutas de subcarpetas y archivos recursivamente
+        # Por simplicidad, por ahora solo actualizamos la carpeta principal
+
+        # Devolver carpeta actualizada
+        updated_folder = await folder_collection.find_one({"_id": ObjectId(folder_id)})
+        return updated_folder
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al mover carpeta: {str(e)}")
+
+
+# --- Endpoints para Copiar Elementos ---
+
+
+@app.post("/files/{file_id}/copy", response_model=FileMetadata, status_code=201)
+async def copy_file(file_id: str, copy_data: CopyFile):
+    """
+    Copia un archivo a una carpeta diferente.
+
+    - **file_id**: ID del archivo a copiar
+    - **folder_id**: ID de la carpeta destino (null para copiar a raíz)
+    """
+    if not ObjectId.is_valid(file_id):
+        raise HTTPException(status_code=400, detail="ID de archivo inválido")
+
+    # Verificar que el archivo existe
+    file_metadata = await file_collection.find_one({"_id": ObjectId(file_id)})
+    if not file_metadata:
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+
+    # Validar carpeta destino si se proporciona
+    target_folder_id = None
+    target_path = "/"
+
+    if copy_data.folder_id:
+        if not ObjectId.is_valid(copy_data.folder_id):
+            raise HTTPException(status_code=400, detail="ID de carpeta destino inválido")
+
+        target_folder = await folder_collection.find_one({"_id": ObjectId(copy_data.folder_id)})
+        if not target_folder:
+            raise HTTPException(status_code=404, detail="Carpeta destino no encontrada")
+
+        target_folder_id = ObjectId(copy_data.folder_id)
+        target_path = target_folder["path"]
+
+    try:
+        # Obtener el archivo original de MinIO
+        original_response = minio_client.get_object(BUCKET_NAME, file_metadata["object_name"])
+        file_data = original_response.read()
+        original_response.close()
+
+        # Crear nuevo object_name para la copia
+        new_object_name = f"{ObjectId()}-{file_metadata['filename']}"
+
+        # Subir la copia a MinIO
+        from io import BytesIO
+
+        file_stream = BytesIO(file_data)
+        minio_client.put_object(BUCKET_NAME, new_object_name, data=file_stream, length=len(file_data), content_type=file_metadata["file_type"])
+
+        # Crear metadatos para el archivo copiado
+        copied_file_metadata = {
+            "filename": file_metadata["filename"],
+            "size": file_metadata["size"],
+            "upload_date": datetime.utcnow(),
+            "file_type": file_metadata["file_type"],
+            "object_name": new_object_name,
+            "folder_id": target_folder_id,
+            "path": target_path,
+        }
+
+        # Insertar el archivo copiado en la base de datos
+        result = await file_collection.insert_one(copied_file_metadata)
+        copied_file = await file_collection.find_one({"_id": result.inserted_id})
+
+        return copied_file
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al copiar archivo: {str(e)}")
+
+
+@app.post("/folders/{folder_id}/copy", response_model=FolderMetadata, status_code=201)
+async def copy_folder(folder_id: str, copy_data: CopyFolder):
+    """
+    Copia una carpeta a una ubicación diferente.
+
+    - **folder_id**: ID de la carpeta a copiar
+    - **parent_folder_id**: ID de la carpeta padre destino (null para copiar a raíz)
+    """
+    if not ObjectId.is_valid(folder_id):
+        raise HTTPException(status_code=400, detail="ID de carpeta inválido")
+
+    # Verificar que la carpeta existe
+    folder = await folder_collection.find_one({"_id": ObjectId(folder_id)})
+    if not folder:
+        raise HTTPException(status_code=404, detail="Carpeta no encontrada")
+
+    # Validar carpeta padre destino si se proporciona
+    target_parent_id = None
+    target_path = f"/{folder['name']}/"
+
+    if copy_data.parent_folder_id:
+        if not ObjectId.is_valid(copy_data.parent_folder_id):
+            raise HTTPException(status_code=400, detail="ID de carpeta padre destino inválido")
+
+        target_parent = await folder_collection.find_one({"_id": ObjectId(copy_data.parent_folder_id)})
+        if not target_parent:
+            raise HTTPException(status_code=404, detail="Carpeta padre destino no encontrada")
+
+        target_parent_id = ObjectId(copy_data.parent_folder_id)
+        target_path = f"{target_parent['path'].rstrip('/')}/{folder['name']}/"
+
+    # Verificar que no existe una carpeta con el mismo nombre en el destino
+    existing_folder = await folder_collection.find_one({"name": folder["name"], "parent_folder_id": target_parent_id})
+    if existing_folder:
+        # Si existe, agregar un sufijo para diferenciar
+        base_name = folder["name"]
+        counter = 1
+        while existing_folder:
+            new_name = f"{base_name} - Copia ({counter})"
+            existing_folder = await folder_collection.find_one({"name": new_name, "parent_folder_id": target_parent_id})
+            if not existing_folder:
+                folder["name"] = new_name
+                target_path = f"{target_parent['path'].rstrip('/')}/{new_name}/" if copy_data.parent_folder_id else f"/{new_name}/"
+                break
+            counter += 1
+
+    try:
+        # Crear la nueva carpeta
+        copied_folder_metadata = {
+            "name": folder["name"],
+            "parent_folder_id": target_parent_id,
+            "created_date": datetime.utcnow(),
+            "path": target_path,
+        }
+
+        result = await folder_collection.insert_one(copied_folder_metadata)
+        copied_folder = await folder_collection.find_one({"_id": result.inserted_id})
+
+        # TODO: Copiar recursivamente subcarpetas y archivos
+        # Por simplicidad, por ahora solo copiamos la carpeta principal
+
+        return copied_folder
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al copiar carpeta: {str(e)}")
 
 
 # --- Punto de Entrada para Ejecutar la Aplicación ---

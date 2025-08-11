@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { writable } from 'svelte/store';
 
   // --- Estado de la Aplicación ---
@@ -16,6 +16,7 @@
   let editingFileId = writable(null);
   let editingFolderId = writable(null);
   let newFileName = writable('');
+  let originalFileName = writable(''); // Para comparar si el nombre cambió
   let newFolderName = writable('');
   let searchTerm = writable('');
   let sortBy = writable('name');
@@ -34,6 +35,13 @@
   let previewFile = writable(null);
   let previewContent = writable('');
   let previewError = writable('');
+
+  // --- Variables para selector de carpeta ---
+  let showFolderSelector = writable(false);
+  let allFolders = writable([]);
+  let selectorCurrentFolder = writable('root');
+  let selectedTargetFolder = writable(null);
+  let selectorMode = writable('move'); // 'move' o 'copy'
 
   const API_URL = 'http://localhost:8000';
 
@@ -373,19 +381,36 @@
   function startEditingFile(file) {
     editingFileId.set(file._id);
     newFileName.set(file.filename);
+    originalFileName.set(file.filename); // Guardar el nombre original
   }
 
   function cancelEditing() {
     editingFileId.set(null);
     editingFolderId.set(null);
     newFileName.set('');
+    originalFileName.set('');
     newFolderName.set('');
   }
 
-  async function saveFileName(fileId) {
-    if (!$newFileName.trim()) {
-      errorMessage.set('El nombre del archivo no puede estar vacío.');
-      setTimeout(() => errorMessage.set(''), 3000);
+  async function saveFileName(fileId, forceValidation = false) {
+    const trimmedName = $newFileName.trim();
+    const originalName = $originalFileName.trim();
+    
+    // Si el nombre no ha cambiado, no hacer nada
+    if (trimmedName === originalName && !forceValidation) {
+      cancelEditing();
+      return;
+    }
+    
+    // Si el nombre está vacío, solo mostrar error si se fuerza la validación
+    if (!trimmedName) {
+      if (forceValidation) {
+        errorMessage.set('El nombre del archivo no puede estar vacío.');
+        setTimeout(() => errorMessage.set(''), 3000);
+      } else {
+        // Si no se fuerza la validación, restaurar el nombre original
+        newFileName.set(originalName);
+      }
       return;
     }
 
@@ -393,11 +418,12 @@
       const response = await fetch(`${API_URL}/files/edit/${fileId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ new_filename: $newFileName }),
+        body: JSON.stringify({ new_filename: trimmedName }),
       });
 
       if (!response.ok) {
-        throw new Error('Error al actualizar el nombre del archivo.');
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Error al actualizar el nombre del archivo.');
       }
 
       await loadFolderContent($currentFolder || 'root');
@@ -599,51 +625,8 @@
       return;
     }
 
-    // Por ahora, mover a la carpeta raíz como demostración
-    const targetFolder = prompt('¿A qué carpeta quieres mover los elementos? (ID de carpeta o "root" para raíz):');
-    if (!targetFolder) {
-      return;
-    }
-
-    try {
-      // Mover archivos seleccionados
-      for (const fileId of $selectedFiles) {
-        const response = await fetch(`${API_URL}/files/${fileId}/move`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            folder_id: targetFolder === 'root' ? null : targetFolder
-          })
-        });
-        if (!response.ok) {
-          throw new Error(`Error al mover archivo ${fileId}`);
-        }
-      }
-
-      // Mover carpetas seleccionadas
-      for (const folderId of $selectedFolders) {
-        const response = await fetch(`${API_URL}/folders/${folderId}/move`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            parent_folder_id: targetFolder === 'root' ? null : targetFolder
-          })
-        });
-        if (!response.ok) {
-          throw new Error(`Error al mover carpeta ${folderId}`);
-        }
-      }
-
-      successMessage.set(`${$selectedFiles.size + $selectedFolders.size} elemento(s) movido(s) correctamente`);
-      clearSelections();
-      await loadFolderContent($currentFolder);
-    } catch (error) {
-      errorMessage.set(error.message);
-    }
+    // Abrir el selector de carpetas
+    await openFolderSelector();
   }
 
   /**
@@ -654,51 +637,8 @@
       return;
     }
 
-    // Por ahora, copiar a la carpeta raíz como demostración
-    const targetFolder = prompt('¿A qué carpeta quieres copiar los elementos? (ID de carpeta o "root" para raíz):');
-    if (!targetFolder) {
-      return;
-    }
-
-    try {
-      // Copiar archivos seleccionados
-      for (const fileId of $selectedFiles) {
-        const response = await fetch(`${API_URL}/files/${fileId}/copy`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            folder_id: targetFolder === 'root' ? null : targetFolder
-          })
-        });
-        if (!response.ok) {
-          throw new Error(`Error al copiar archivo ${fileId}`);
-        }
-      }
-
-      // Copiar carpetas seleccionadas
-      for (const folderId of $selectedFolders) {
-        const response = await fetch(`${API_URL}/folders/${folderId}/copy`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            parent_folder_id: targetFolder === 'root' ? null : targetFolder
-          })
-        });
-        if (!response.ok) {
-          throw new Error(`Error al copiar carpeta ${folderId}`);
-        }
-      }
-
-      successMessage.set(`${$selectedFiles.size + $selectedFolders.size} elemento(s) copiado(s) correctamente`);
-      clearSelections();
-      await loadFolderContent($currentFolder);
-    } catch (error) {
-      errorMessage.set(error.message);
-    }
+    // Abrir el selector de carpetas en modo copiar
+    await openFolderSelector('copy');
   }
 
   // --- Funciones de Preview ---
@@ -737,8 +677,21 @@
       
       // PDF
       if (fileType === 'application/pdf') {
-        previewContent.set(`${API_URL}/files/download/${file._id}`);
-        return;
+        try {
+          const response = await fetch(`${API_URL}/files/download/${file._id}?inline=true`);
+          if (!response.ok) {
+            throw new Error('No se pudo cargar el PDF');
+          }
+          
+          const blob = await response.blob();
+          const pdfUrl = URL.createObjectURL(blob);
+          previewContent.set(pdfUrl);
+          return;
+        } catch (error) {
+          console.error('Error cargando PDF:', error);
+          previewError.set('Error al cargar la vista previa del PDF');
+          return;
+        }
       }
       
       // Archivos de texto
@@ -765,10 +718,145 @@
    * Cierra el preview
    */
   function closePreview() {
+    // Limpiar URL de objeto si existe (para PDFs y otros blobs)
+    const currentContent = $previewContent;
+    if (currentContent && currentContent.startsWith('blob:')) {
+      URL.revokeObjectURL(currentContent);
+    }
+    
     showPreview.set(false);
     previewFile.set(null);
     previewContent.set('');
     previewError.set('');
+  }
+
+  // --- Funciones para el selector de carpetas ---
+  
+  /**
+   * Carga todas las carpetas de forma recursiva para el selector
+   */
+  async function loadAllFolders() {
+    try {
+      const response = await fetch(`${API_URL}/folders`);
+      if (!response.ok) throw new Error('Error al cargar carpetas');
+      
+      const folders = await response.json();
+      allFolders.set(folders);
+    } catch (error) {
+      console.error('Error cargando carpetas:', error);
+      errorMessage.set('Error al cargar las carpetas disponibles');
+    }
+  }
+
+  /**
+   * Carga las carpetas de un directorio específico para el selector
+   */
+  async function loadSelectorFolderContent(folderId = 'root') {
+    try {
+      const response = await fetch(`${API_URL}/folders?parent_folder_id=${folderId}`);
+      if (!response.ok) throw new Error('Error al cargar contenido');
+      
+      const folders = await response.json();
+      allFolders.set(folders);
+      selectorCurrentFolder.set(folderId);
+    } catch (error) {
+      console.error('Error cargando contenido del selector:', error);
+      errorMessage.set('Error al cargar carpetas');
+    }
+  }
+
+  /**
+   * Abre el modal selector de carpetas
+   */
+  async function openFolderSelector(mode = 'move') {
+    selectedTargetFolder.set(null);
+    selectorMode.set(mode);
+    await loadSelectorFolderContent('root');
+    showFolderSelector.set(true);
+  }
+
+  /**
+   * Cierra el modal selector de carpetas
+   */
+  function closeFolderSelector() {
+    showFolderSelector.set(false);
+    selectedTargetFolder.set(null);
+    allFolders.set([]);
+  }
+
+  /**
+   * Selecciona una carpeta como destino
+   */
+  function selectTargetFolder(folder) {
+    selectedTargetFolder.set(folder);
+  }
+
+  /**
+   * Navega a una carpeta dentro del selector
+   */
+  function navigateToFolderInSelector(folderId) {
+    loadSelectorFolderContent(folderId);
+  }
+
+  /**
+   * Confirma la acción (mover o copiar) a la carpeta seleccionada
+   */
+  async function confirmAction() {
+    const targetFolder = $selectedTargetFolder;
+    const mode = $selectorMode;
+    const isMove = mode === 'move';
+    
+    try {
+      // Procesar archivos seleccionados
+      for (const fileId of $selectedFiles) {
+        const endpoint = isMove ? `${API_URL}/files/${fileId}/move` : `${API_URL}/files/${fileId}/copy`;
+        const method = isMove ? 'PATCH' : 'POST';
+        
+        const response = await fetch(endpoint, {
+          method: method,
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            folder_id: targetFolder ? targetFolder._id : null
+          })
+        });
+        if (!response.ok) {
+          throw new Error(`Error al ${isMove ? 'mover' : 'copiar'} archivo ${fileId}`);
+        }
+      }
+
+      // Procesar carpetas seleccionadas
+      for (const folderId of $selectedFolders) {
+        const endpoint = isMove ? `${API_URL}/folders/${folderId}/move` : `${API_URL}/folders/${folderId}/copy`;
+        const method = isMove ? 'PATCH' : 'POST';
+        
+        const response = await fetch(endpoint, {
+          method: method,
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            parent_folder_id: targetFolder ? targetFolder._id : null
+          })
+        });
+        if (!response.ok) {
+          throw new Error(`Error al ${isMove ? 'mover' : 'copiar'} carpeta ${folderId}`);
+        }
+      }
+
+      const targetName = targetFolder ? targetFolder.name : 'Raíz';
+      const actionName = isMove ? 'movido(s)' : 'copiado(s)';
+      successMessage.set(`${$selectedFiles.size + $selectedFolders.size} elemento(s) ${actionName} a "${targetName}" correctamente`);
+      
+      if (isMove) {
+        clearSelections();
+      }
+      closeFolderSelector();
+      await loadFolderContent($currentFolder);
+    } catch (error) {
+      errorMessage.set(error.message);
+    }
   }
 
   // --- Reactive Statements ---
@@ -794,6 +882,14 @@
   // --- Lifecycle ---
   onMount(() => {
     loadFolderContent();
+  });
+
+  onDestroy(() => {
+    // Limpiar URL de objeto si existe al destruir el componente
+    const currentContent = $previewContent;
+    if (currentContent && currentContent.startsWith('blob:')) {
+      URL.revokeObjectURL(currentContent);
+    }
   });
 
   // --- Search reactivity ---
@@ -910,7 +1006,7 @@
                   class="p-1.5 bg-red-600 text-white text-xs rounded hover:bg-red-700 transition-colors"
                   title="Eliminar seleccionados"
                 >
-                  🗑️
+                  🗑️ Eliminar
                 </button>
                 
                 <button
@@ -918,7 +1014,7 @@
                   class="p-1.5 bg-green-600 text-white text-xs rounded hover:bg-green-700 transition-colors"
                   title="Mover seleccionados"
                 >
-                  📁
+                  📁 Mover
                 </button>
                 
                 <button
@@ -926,7 +1022,7 @@
                   class="p-1.5 bg-purple-600 text-white text-xs rounded hover:bg-purple-700 transition-colors"
                   title="Copiar seleccionados"
                 >
-                  📋
+                  📋 Copiar
                 </button>
               </div>
             </div>
@@ -1077,11 +1173,26 @@
                         <input
                           type="text"
                           bind:value={$newFileName}
-                          class="border rounded px-2 py-1 text-sm"
-                          on:keydown={(e) => e.key === 'Enter' && saveFileName(file._id)}
-                          on:blur={() => saveFileName(file._id)}
+                          class="border rounded px-2 py-1 text-sm mr-2"
+                          on:keydown={(e) => {
+                            if (e.key === 'Enter') saveFileName(file._id, true);
+                            if (e.key === 'Escape') cancelEditing();
+                          }}
+                          placeholder="Nombre del archivo"
+                          autofocus
                         />
-                        <button on:click={cancelEditing} class="text-xs text-gray-500 ml-2">Cancelar</button>
+                        <button 
+                          on:click={() => saveFileName(file._id, true)} 
+                          class="text-xs bg-green-600 text-white px-2 py-1 rounded mr-1 hover:bg-green-700"
+                        >
+                          ✓ Guardar
+                        </button>
+                        <button 
+                          on:click={cancelEditing} 
+                          class="text-xs bg-gray-500 text-white px-2 py-1 rounded hover:bg-gray-600"
+                        >
+                          ✕ Cancelar
+                        </button>
                       </div>
                     {:else}
                       <div class="flex items-center">
@@ -1400,6 +1511,132 @@
               class="px-3 py-1.5 bg-gray-600 text-white text-sm rounded hover:bg-gray-700 transition-colors"
             >
               Cerrar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Modal Selector de Carpetas -->
+  {#if $showFolderSelector}
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" on:click={closeFolderSelector}>
+      <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden" on:click={(e) => e.stopPropagation()}>
+        <!-- Header del modal -->
+        <div class="flex items-center justify-between p-4 border-b border-gray-200">
+          <div class="flex items-center space-x-3">
+            <span class="text-2xl">{$selectorMode === 'move' ? '📁' : '📋'}</span>
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900">
+                {$selectorMode === 'move' ? 'Seleccionar Carpeta de Destino' : 'Seleccionar Carpeta para Copiar'}
+              </h3>
+              <p class="text-sm text-gray-500">
+                {$selectorMode === 'move' ? 'Elige dónde mover los elementos seleccionados' : 'Elige dónde copiar los elementos seleccionados'}
+              </p>
+            </div>
+          </div>
+          <button
+            on:click={closeFolderSelector}
+            class="text-gray-400 hover:text-gray-600 text-2xl font-bold"
+          >
+            ✕
+          </button>
+        </div>
+
+        <!-- Navegación del selector -->
+        <div class="p-4 bg-gray-50 border-b border-gray-200">
+          <div class="flex items-center space-x-2">
+            <button
+              on:click={() => navigateToFolderInSelector('root')}
+              class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors flex items-center space-x-1"
+            >
+              <span>🏠</span>
+              <span>Raíz</span>
+            </button>
+            {#if $selectorCurrentFolder !== 'root'}
+              <span class="text-gray-400">→</span>
+              <span class="text-sm text-gray-600">Carpeta actual</span>
+            {/if}
+          </div>
+        </div>
+
+        <!-- Lista de carpetas -->
+        <div class="p-4 overflow-y-auto max-h-[50vh]">
+          <!-- Opción de raíz -->
+          <div 
+            class="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-100 cursor-pointer border-2 transition-colors {$selectedTargetFolder === null ? 'border-blue-500 bg-blue-50' : 'border-transparent'}"
+            on:click={() => selectTargetFolder(null)}
+          >
+            <span class="text-2xl">🏠</span>
+            <div class="flex-1">
+              <p class="font-medium text-gray-900">Carpeta Raíz</p>
+              <p class="text-sm text-gray-500">
+                {$selectorMode === 'move' ? 'Mover a la carpeta principal' : 'Copiar a la carpeta principal'}
+              </p>
+            </div>
+            {#if $selectedTargetFolder === null}
+              <span class="text-blue-600 text-xl">✓</span>
+            {/if}
+          </div>
+
+          <!-- Carpetas disponibles -->
+          {#each $allFolders as folder}
+            <div 
+              class="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-100 cursor-pointer border-2 transition-colors {$selectedTargetFolder?._id === folder._id ? 'border-blue-500 bg-blue-50' : 'border-transparent'}"
+              on:click={() => selectTargetFolder(folder)}
+            >
+              <span class="text-2xl">📁</span>
+              <div class="flex-1">
+                <p class="font-medium text-gray-900">{folder.name}</p>
+                <p class="text-sm text-gray-500">Creada: {formatDate(folder.created_date)}</p>
+              </div>
+              <div class="flex items-center space-x-2">
+                {#if $selectedTargetFolder?._id === folder._id}
+                  <span class="text-blue-600 text-xl">✓</span>
+                {/if}
+                <button
+                  on:click={(e) => { e.stopPropagation(); navigateToFolderInSelector(folder._id); }}
+                  class="px-2 py-1 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300 transition-colors"
+                  title="Explorar carpeta"
+                >
+                  ➡️
+                </button>
+              </div>
+            </div>
+          {/each}
+
+          {#if $allFolders.length === 0}
+            <div class="text-center py-8 text-gray-500">
+              <div class="text-4xl mb-2">📂</div>
+              <p>No hay carpetas disponibles en esta ubicación</p>
+            </div>
+          {/if}
+        </div>
+
+        <!-- Footer del modal -->
+        <div class="flex items-center justify-between p-4 border-t border-gray-200 bg-gray-50">
+          <div class="text-sm text-gray-600">
+            {#if $selectedTargetFolder}
+              Seleccionado: <strong>{$selectedTargetFolder.name}</strong>
+            {:else if $selectedTargetFolder === null}
+              Seleccionado: <strong>Carpeta Raíz</strong>
+            {:else}
+              Selecciona una carpeta de destino
+            {/if}
+          </div>
+          <div class="flex space-x-2">
+            <button
+              on:click={closeFolderSelector}
+              class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              on:click={confirmAction}
+              disabled={$selectedTargetFolder === undefined}
+              class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {$selectorMode === 'move' ? 'Mover' : 'Copiar'} aquí ({$selectedFiles.size + $selectedFolders.size} elementos)
             </button>
           </div>
         </div>
