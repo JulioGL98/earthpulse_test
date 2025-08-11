@@ -84,6 +84,7 @@ class FolderMetadata(BaseModel):
     parent_folder_id: Optional[PyObjectId] = None
     created_date: datetime = Field(default_factory=datetime.utcnow)
     path: str = "/"
+    owner: Optional[str] = None
 
     class Config:
         populate_by_name = True
@@ -99,6 +100,7 @@ class FileMetadata(BaseModel):
     object_name: str
     folder_id: Optional[PyObjectId] = None
     path: str = "/"
+    owner: Optional[str] = None
 
     class Config:
         populate_by_name = True
@@ -154,6 +156,7 @@ class UserCreate(UserBase):
 class UserInDB(UserBase):
     hashed_password: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    role: str = "user"
 
 
 class Token(BaseModel):
@@ -205,6 +208,26 @@ async def get_user(username: str) -> Optional[dict]:
     return await user_collection.find_one({"username": username})
 
 
+# --- Helper functions for authorization ---
+def is_admin(user: Optional[dict]) -> bool:
+    """Check if user has admin role"""
+    return bool(user and user.get("role") == "admin")
+
+
+def assert_owner_or_admin(resource: Optional[dict], current_user: dict, not_found_message: str = "Recurso no encontrado"):
+    """Verify that resource exists and user is owner or admin"""
+    if not resource:
+        raise HTTPException(status_code=404, detail=not_found_message)
+    if is_admin(current_user):
+        return
+    owner = resource.get("owner")
+    if owner is None:
+        # Resource without owner: treat as not found for regular users
+        raise HTTPException(status_code=404, detail=not_found_message)
+    if owner != current_user.get("username"):
+        raise HTTPException(status_code=403, detail="No tienes permisos para acceder a este recurso")
+
+
 # Middleware de autenticación (protege todos menos /, /health, /auth/*)
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
@@ -243,9 +266,14 @@ async def startup_event():
                 "username": "admin",
                 "hashed_password": get_password_hash("admin123"),
                 "created_at": datetime.utcnow(),
+                "role": "admin",
             }
         )
         print("Usuario admin creado: admin / admin123")
+    else:
+        # Ensure admin role exists
+        if admin.get("role") != "admin":
+            await user_collection.update_one({"_id": admin["_id"]}, {"$set": {"role": "admin"}})
 
 
 # --- Endpoints de la API ---
@@ -283,7 +311,7 @@ async def health_check():
 
 
 @app.post("/files/upload", response_model=FileMetadata, status_code=201)
-async def upload_file(file: UploadFile = File(...), folder_id: Optional[str] = Form(None)):
+async def upload_file(request: Request, file: UploadFile = File(...), folder_id: Optional[str] = Form(None)):
     """
     Sube un archivo al sistema de almacenamiento.
 
@@ -295,15 +323,15 @@ async def upload_file(file: UploadFile = File(...), folder_id: Optional[str] = F
     if not file.filename:
         raise HTTPException(status_code=400, detail="El archivo debe tener un nombre")
 
-    # Validar que la carpeta existe si se proporciona
+    # Validar que la carpeta existe si se proporciona y pertenece al usuario
     folder_path = "/"
     if folder_id:
         if not ObjectId.is_valid(folder_id):
             raise HTTPException(status_code=400, detail="ID de carpeta inválido")
 
         folder = await folder_collection.find_one({"_id": ObjectId(folder_id)})
-        if not folder:
-            raise HTTPException(status_code=404, detail="Carpeta no encontrada")
+        current_user = request.state.user
+        assert_owner_or_admin(folder, current_user, "Carpeta no encontrada")
         folder_path = folder["path"]
 
     # Límite de tamaño (50MB)
@@ -328,6 +356,7 @@ async def upload_file(file: UploadFile = File(...), folder_id: Optional[str] = F
             "object_name": object_name,
             "folder_id": ObjectId(folder_id) if folder_id else None,
             "path": folder_path,
+            "owner": request.state.user.get("username"),
         }
 
         result = await file_collection.insert_one(file_metadata)
@@ -339,7 +368,7 @@ async def upload_file(file: UploadFile = File(...), folder_id: Optional[str] = F
 
 
 @app.get("/files", response_model=List[FileMetadata])
-async def list_files(folder_id: Optional[str] = None, search: Optional[str] = None):
+async def list_files(request: Request, folder_id: Optional[str] = None, search: Optional[str] = None):
     """
     Lista archivos con filtros opcionales.
 
@@ -347,6 +376,11 @@ async def list_files(folder_id: Optional[str] = None, search: Optional[str] = No
     - **search**: Buscar por nombre de archivo
     """
     query = {}
+    current_user = request.state.user
+
+    # Filter by ownership unless admin
+    if not is_admin(current_user):
+        query["owner"] = current_user.get("username")
 
     # Filtrar por carpeta
     if folder_id:
@@ -366,7 +400,7 @@ async def list_files(folder_id: Optional[str] = None, search: Optional[str] = No
 
 
 @app.get("/files/download/{file_id}")
-async def download_file(file_id: str, inline: Optional[bool] = False):
+async def download_file(request: Request, file_id: str, inline: Optional[bool] = False):
     """
     Descarga un archivo o lo muestra inline para preview.
 
@@ -377,9 +411,8 @@ async def download_file(file_id: str, inline: Optional[bool] = False):
         raise HTTPException(status_code=400, detail="ID de archivo inválido")
 
     file_metadata = await file_collection.find_one({"_id": ObjectId(file_id)})
-
-    if not file_metadata:
-        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    current_user = request.state.user
+    assert_owner_or_admin(file_metadata, current_user, "Archivo no encontrado")
 
     try:
         response = minio_client.get_object(BUCKET_NAME, file_metadata["object_name"])
@@ -403,9 +436,13 @@ async def download_file(file_id: str, inline: Optional[bool] = False):
 
 
 @app.put("/files/edit/{file_id}", response_model=FileMetadata)
-async def edit_file_name(file_id: str, file_update: UpdateFileName):
+async def edit_file_name(request: Request, file_id: str, file_update: UpdateFileName):
     if not ObjectId.is_valid(file_id):
         raise HTTPException(status_code=400, detail="ID de archivo inválido")
+
+    current_user = request.state.user
+    doc = await file_collection.find_one({"_id": ObjectId(file_id)})
+    assert_owner_or_admin(doc, current_user, "Archivo no encontrado")
 
     update_result = await file_collection.update_one({"_id": ObjectId(file_id)}, {"$set": {"filename": file_update.new_filename}})
 
@@ -417,14 +454,13 @@ async def edit_file_name(file_id: str, file_update: UpdateFileName):
 
 
 @app.delete("/files/delete/{file_id}", status_code=204)
-async def delete_file(file_id: str):
+async def delete_file(request: Request, file_id: str):
     if not ObjectId.is_valid(file_id):
         raise HTTPException(status_code=400, detail="ID de archivo inválido")
 
     file_metadata = await file_collection.find_one({"_id": ObjectId(file_id)})
-
-    if not file_metadata:
-        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    current_user = request.state.user
+    assert_owner_or_admin(file_metadata, current_user, "Archivo no encontrado")
 
     try:
         minio_client.remove_object(BUCKET_NAME, file_metadata["object_name"])
@@ -438,7 +474,7 @@ async def delete_file(file_id: str):
 
 
 @app.post("/folders", response_model=FolderMetadata, status_code=201)
-async def create_folder(folder: CreateFolder):
+async def create_folder(request: Request, folder: CreateFolder):
     """
     Crea una nueva carpeta.
 
@@ -446,7 +482,8 @@ async def create_folder(folder: CreateFolder):
     - **parent_folder_id**: ID de la carpeta padre (opcional)
     """
     # Validar que no exista una carpeta con el mismo nombre en el mismo directorio
-    query = {"name": folder.name}
+    current_user = request.state.user
+    query = {"name": folder.name, "owner": current_user.get("username")}
     if folder.parent_folder_id:
         if not ObjectId.is_valid(folder.parent_folder_id):
             raise HTTPException(status_code=400, detail="ID de carpeta padre inválido")
@@ -458,12 +495,11 @@ async def create_folder(folder: CreateFolder):
     if existing_folder:
         raise HTTPException(status_code=400, detail="Ya existe una carpeta con ese nombre en este directorio")
 
-    # Obtener ruta de la carpeta padre
+    # Validar carpeta padre (ownership)
     parent_path = "/"
     if folder.parent_folder_id:
         parent_folder = await folder_collection.find_one({"_id": ObjectId(folder.parent_folder_id)})
-        if not parent_folder:
-            raise HTTPException(status_code=404, detail="Carpeta padre no encontrada")
+        assert_owner_or_admin(parent_folder, current_user, "Carpeta padre no encontrada")
         parent_path = parent_folder["path"]
 
     # Construir ruta completa
@@ -474,6 +510,7 @@ async def create_folder(folder: CreateFolder):
         "parent_folder_id": ObjectId(folder.parent_folder_id) if folder.parent_folder_id else None,
         "created_date": datetime.utcnow(),
         "path": new_path,
+        "owner": current_user.get("username"),
     }
 
     result = await folder_collection.insert_one(folder_metadata)
@@ -482,13 +519,19 @@ async def create_folder(folder: CreateFolder):
 
 
 @app.get("/folders", response_model=List[FolderMetadata])
-async def list_folders(parent_folder_id: Optional[str] = None):
+async def list_folders(request: Request, parent_folder_id: Optional[str] = None):
     """
     Lista carpetas en un directorio específico.
 
     - **parent_folder_id**: ID de la carpeta padre (None para root)
     """
     query = {}
+    current_user = request.state.user
+
+    # Add ownership filter unless admin
+    if not is_admin(current_user):
+        query["owner"] = current_user.get("username")
+
     if parent_folder_id:
         if parent_folder_id == "root":
             query["parent_folder_id"] = None
@@ -504,20 +547,20 @@ async def list_folders(parent_folder_id: Optional[str] = None):
 
 
 @app.get("/folders/{folder_id}", response_model=FolderMetadata)
-async def get_folder(folder_id: str):
+async def get_folder(request: Request, folder_id: str):
     """Obtiene información de una carpeta específica"""
     if not ObjectId.is_valid(folder_id):
         raise HTTPException(status_code=400, detail="ID de carpeta inválido")
 
     folder = await folder_collection.find_one({"_id": ObjectId(folder_id)})
-    if not folder:
-        raise HTTPException(status_code=404, detail="Carpeta no encontrada")
+    current_user = request.state.user
+    assert_owner_or_admin(folder, current_user, "Carpeta no encontrada")
 
     return folder
 
 
 @app.delete("/folders/{folder_id}", status_code=204)
-async def delete_folder(folder_id: str):
+async def delete_folder(request: Request, folder_id: str):
     """
     Elimina una carpeta y todo su contenido.
     """
@@ -525,8 +568,8 @@ async def delete_folder(folder_id: str):
         raise HTTPException(status_code=400, detail="ID de carpeta inválido")
 
     folder = await folder_collection.find_one({"_id": ObjectId(folder_id)})
-    if not folder:
-        raise HTTPException(status_code=404, detail="Carpeta no encontrada")
+    current_user = request.state.user
+    assert_owner_or_admin(folder, current_user, "Carpeta no encontrada")
 
     try:
         # Eliminar archivos en la carpeta
@@ -538,7 +581,7 @@ async def delete_folder(folder_id: str):
         # Eliminar subcarpetas recursivamente
         subfolders = await folder_collection.find({"parent_folder_id": ObjectId(folder_id)}).to_list(1000)
         for subfolder in subfolders:
-            await delete_folder(str(subfolder["_id"]))
+            await delete_folder(request, str(subfolder["_id"]))
 
         # Eliminar la carpeta
         await folder_collection.delete_one({"_id": ObjectId(folder_id)})
@@ -549,20 +592,29 @@ async def delete_folder(folder_id: str):
 
 
 @app.get("/folders/{folder_id}/content")
-async def get_folder_content(folder_id: str):
+async def get_folder_content(request: Request, folder_id: str):
     """
     Obtiene el contenido completo de una carpeta (subcarpetas y archivos).
     """
     if folder_id != "root" and not ObjectId.is_valid(folder_id):
         raise HTTPException(status_code=400, detail="ID de carpeta inválido")
 
+    current_user = request.state.user
+
+    # Base queries for folders and files
+    base_folder_query = {"parent_folder_id": None if folder_id == "root" else ObjectId(folder_id)}
+    base_file_query = {"folder_id": None if folder_id == "root" else ObjectId(folder_id)}
+
+    # Add ownership filter unless admin
+    if not is_admin(current_user):
+        base_folder_query["owner"] = current_user.get("username")
+        base_file_query["owner"] = current_user.get("username")
+
     # Obtener carpetas
-    folder_query = {"parent_folder_id": None if folder_id == "root" else ObjectId(folder_id)}
-    folders = await folder_collection.find(folder_query).to_list(1000)
+    folders = await folder_collection.find(base_folder_query).to_list(1000)
 
     # Obtener archivos
-    file_query = {"folder_id": None if folder_id == "root" else ObjectId(folder_id)}
-    files = await file_collection.find(file_query).to_list(1000)
+    files = await file_collection.find(base_file_query).to_list(1000)
 
     # Convertir ObjectId a string para serialización JSON
     for folder in folders:
@@ -829,7 +881,7 @@ async def register(user: UserCreate):
     if existing:
         raise HTTPException(status_code=400, detail="El usuario ya existe")
     hashed = get_password_hash(user.password)
-    await user_collection.insert_one({"username": user.username, "hashed_password": hashed, "created_at": datetime.utcnow()})
+    await user_collection.insert_one({"username": user.username, "hashed_password": hashed, "created_at": datetime.utcnow(), "role": "user"})
     token = create_access_token({"sub": user.username})
     return Token(access_token=token)
 

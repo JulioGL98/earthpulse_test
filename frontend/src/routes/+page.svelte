@@ -59,6 +59,8 @@
         showAuthScreen.set(false);
         // limpiar campos
         authPassword.set('');
+        // CARGAR CONTENIDO INMEDIATAMENTE DESPUÉS DEL LOGIN EXITOSO
+        await loadFolderContent('root');
       } else {
         throw new Error('Token no recibido');
       }
@@ -86,7 +88,7 @@
         if (resp.ok) {
           authUser.set(''); // Username no viaja en token simple; podríamos decodificarlo
           showAuthScreen.set(false);
-          await loadFolderContent();
+          await loadFolderContent('root');
         } else {
           logout();
         }
@@ -756,13 +758,6 @@
   $: if ($currentFolder) {
     clearSelections();
   }
-  onMount(() => {
-    if (!$authToken) {
-      isLoading.set(false);
-    } else {
-      loadFolderContent();
-    }
-  });
   onDestroy(() => {
     const currentContent = $previewContent;
     if (currentContent && currentContent.startsWith('blob:')) URL.revokeObjectURL(currentContent);
