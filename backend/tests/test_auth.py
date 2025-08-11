@@ -1,10 +1,12 @@
 """Tests para funcionalidades de autenticación"""
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from fastapi.testclient import TestClient
-from unittest.mock import patch, AsyncMock
-from main import app
 from bson import ObjectId
+from fastapi.testclient import TestClient
+
+from main import app
 
 
 class TestAuthEndpoints:
@@ -52,7 +54,13 @@ class TestAuthEndpoints:
         with patch("main.user_collection") as mock_user_col, patch("main.verify_password") as mock_verify:
             # Mock user exists and password is correct
             mock_user_col.find_one = AsyncMock(
-                return_value={"_id": ObjectId(), "username": "testuser", "email": "test@example.com", "hashed_password": "hashed_password", "role": "user"}
+                return_value={
+                    "_id": ObjectId(),
+                    "username": "testuser",
+                    "email": "test@example.com",
+                    "hashed_password": "hashed_password",
+                    "role": "user",
+                }
             )
             mock_verify.return_value = True
 
@@ -72,7 +80,9 @@ class TestAuthEndpoints:
 
         with patch("main.user_collection") as mock_user_col, patch("main.verify_password") as mock_verify:
             # Mock user exists but password is wrong
-            mock_user_col.find_one = AsyncMock(return_value={"_id": ObjectId(), "username": "testuser", "hashed_password": "hashed_password"})
+            mock_user_col.find_one = AsyncMock(
+                return_value={"_id": ObjectId(), "username": "testuser", "hashed_password": "hashed_password"}
+            )
             mock_verify.return_value = False
 
             response = client.post("/auth/login", data=login_data)

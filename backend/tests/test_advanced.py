@@ -1,11 +1,13 @@
 """Tests para funcionalidades avanzadas de archivos y carpetas"""
 
-import pytest
-from fastapi.testclient import TestClient
-from unittest.mock import patch, AsyncMock, MagicMock
-from main import app
-from bson import ObjectId
 import io
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from bson import ObjectId
+from fastapi.testclient import TestClient
+
+from main import app
 
 
 class TestAdvancedFileOperations:
@@ -16,10 +18,21 @@ class TestAdvancedFileOperations:
         file_id = str(ObjectId())
         copy_data = {"destination_folder_id": "root"}
 
-        with patch("main.file_collection") as mock_file_col, patch("main.folder_collection") as mock_folder_col, patch("main.minio_client") as mock_minio:
+        with (
+            patch("main.file_collection") as mock_file_col,
+            patch("main.folder_collection") as mock_folder_col,
+            patch("main.minio_client") as mock_minio,
+        ):
             # Mock file exists
             mock_file_col.find_one = AsyncMock(
-                return_value={"_id": ObjectId(file_id), "filename": "test.txt", "size": 1024, "file_type": "text/plain", "object_name": "original-object", "owner": "testuser"}
+                return_value={
+                    "_id": ObjectId(file_id),
+                    "filename": "test.txt",
+                    "size": 1024,
+                    "file_type": "text/plain",
+                    "object_name": "original-object",
+                    "owner": "testuser",
+                }
             )
 
             # Mock destination folder exists (root folder)
@@ -77,7 +90,14 @@ class TestAdvancedFileOperations:
 
         with patch("main.folder_collection") as mock_folder_col, patch("main.file_collection") as mock_file_col:
             # Mock folder exists
-            mock_folder_col.find_one = AsyncMock(return_value={"_id": ObjectId(folder_id), "name": "Test Folder", "path": "/Test Folder/", "owner": "testuser"})
+            mock_folder_col.find_one = AsyncMock(
+                return_value={
+                    "_id": ObjectId(folder_id),
+                    "name": "Test Folder",
+                    "path": "/Test Folder/",
+                    "owner": "testuser",
+                }
+            )
 
             # Mock no files in folder
             mock_file_col.find = MagicMock()
@@ -89,7 +109,9 @@ class TestAdvancedFileOperations:
 
             # Mock folder insertion
             new_folder_id = ObjectId()
-            mock_folder_col.insert_one = AsyncMock(return_value=type("obj", (object,), {"inserted_id": new_folder_id})())
+            mock_folder_col.insert_one = AsyncMock(
+                return_value=type("obj", (object,), {"inserted_id": new_folder_id})()
+            )
 
             # Mock finding the new folder
             mock_folder_col.find_one.side_effect = [
@@ -139,7 +161,15 @@ class TestSearchAndFilter:
             # Mock search results
             mock_file_col.find = MagicMock()
             mock_file_col.find.return_value.to_list = AsyncMock(
-                return_value=[{"_id": ObjectId(), "filename": "test.txt", "size": 1024, "file_type": "text/plain", "owner": "testuser"}]
+                return_value=[
+                    {
+                        "_id": ObjectId(),
+                        "filename": "test.txt",
+                        "size": 1024,
+                        "file_type": "text/plain",
+                        "owner": "testuser",
+                    }
+                ]
             )
 
             response = client.get("/files?search=test")
@@ -161,7 +191,14 @@ class TestSearchAndFilter:
             # Mock files in folder
             mock_file_col.find = MagicMock()
             mock_file_col.find.return_value.to_list = AsyncMock(
-                return_value=[{"_id": ObjectId(), "filename": "file_in_folder.txt", "folder_id": ObjectId(folder_id), "owner": "testuser"}]
+                return_value=[
+                    {
+                        "_id": ObjectId(),
+                        "filename": "file_in_folder.txt",
+                        "folder_id": ObjectId(folder_id),
+                        "owner": "testuser",
+                    }
+                ]
             )
 
             response = client.get(f"/files?folder_id={folder_id}")
@@ -185,7 +222,9 @@ class TestPermissionsAndSecurity:
             mock_get_user.return_value = {"username": "user1", "role": "user"}
 
             # Mock file owned by different user
-            mock_file_col.find_one = AsyncMock(return_value={"_id": ObjectId(file_id), "filename": "private.txt", "owner": "user2"})
+            mock_file_col.find_one = AsyncMock(
+                return_value={"_id": ObjectId(file_id), "filename": "private.txt", "owner": "user2"}
+            )
 
             response = client.get(f"/files/download/{file_id}")
 
@@ -202,7 +241,14 @@ class TestPermissionsAndSecurity:
             mock_get_user.return_value = {"username": "admin", "role": "admin"}
 
             # Mock file owned by different user
-            mock_file_col.find_one = AsyncMock(return_value={"_id": ObjectId(file_id), "filename": "any_file.txt", "owner": "user2", "object_name": "object-name"})
+            mock_file_col.find_one = AsyncMock(
+                return_value={
+                    "_id": ObjectId(file_id),
+                    "filename": "any_file.txt",
+                    "owner": "user2",
+                    "object_name": "object-name",
+                }
+            )
 
             with patch("main.minio_client") as mock_minio:
                 mock_minio.get_object = MagicMock()

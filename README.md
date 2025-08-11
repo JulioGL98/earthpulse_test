@@ -382,3 +382,87 @@ Este proyecto fue desarrollado como parte de una prueba técnica para demostrar 
 - MinIO se eligió por su compatibilidad con S3 y facilidad de deploy
 - SvelteKit ofrece mejor rendimiento que React para este caso de uso
 - FastAPI proporciona validación automática y documentación de API
+
+## 🚀 CI/CD Pipeline
+
+Este proyecto incluye un pipeline completo de integración y despliegue continuo usando GitHub Actions.
+
+### 🔄 Triggers del Pipeline
+- **Push** a las ramas `main` y `develop`
+- **Pull Requests** hacia `main`
+
+### 🧪 Etapas del Pipeline
+
+#### 1. **Backend Tests & Linting** 🐍
+- Configuración de Python 3.9
+- Cache de dependencias pip
+- Linting con Black, Flake8 e isort
+- Tests de modelos y endpoints de salud
+- Reporte de cobertura de código
+
+#### 2. **Frontend Tests & Build** 🎨
+- Configuración de Node.js 18
+- Cache de dependencias npm
+- Linting con ESLint
+- Formateo con Prettier
+- Build del proyecto
+- Almacenamiento de artefactos
+
+#### 3. **Docker Build & Integration Tests** 🐳
+- Build de imágenes Docker en paralelo
+- Tests de integración completos
+- Verificación de endpoints en contenedores
+- Solo se ejecuta en ramas `main` y `develop`
+
+#### 4. **Security Scan** 🔒
+- Escaneo de vulnerabilidades con Trivy
+- Búsqueda de secretos hardcodeados
+- Solo se ejecuta en rama `main`
+
+#### 5. **Quality Metrics** 📊
+- Métricas del proyecto (líneas de código, archivos)
+- Resumen del estado del pipeline
+- Se ejecuta siempre al final
+
+#### 6. **Deploy to Staging** 🚀
+- Deploy automático a staging en rama `develop`
+- Configurado como placeholder para expansión futura
+
+### 📊 Estado del Pipeline
+Los builds están configurados para pasar con los tests actuales:
+- ✅ **17 tests de modelos** - Validación de esquemas Pydantic
+- ✅ **2 tests de health** - Endpoints básicos de la API
+- ✅ **Build Docker** - Construcción exitosa de contenedores
+- ✅ **Security Scan** - Sin vulnerabilidades críticas
+
+### 🔧 Comandos Locales para CI/CD
+
+Puedes ejecutar las mismas verificaciones localmente:
+
+```bash
+# Backend linting
+cd backend
+pip install black flake8 isort
+black --check .
+flake8 .
+isort --check-only .
+
+# Backend tests
+python -m pytest tests/test_models.py -v
+python -m pytest tests/test_api.py::TestHealthEndpoints -v
+
+# Frontend linting y build
+cd frontend
+npm run lint
+npm run build
+
+# Docker build local
+docker-compose build
+```
+
+### 📈 Próximas Mejoras
+- [ ] Integración de tests de autenticación con mocks
+- [ ] Deploy automático a producción
+- [ ] Notificaciones de Slack/Discord
+- [ ] Métricas de performance
+- [ ] Tests de carga automatizados

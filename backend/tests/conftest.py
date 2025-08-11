@@ -1,12 +1,14 @@
-import pytest
 import asyncio
+import os
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from bson import ObjectId
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
 from motor.motor_asyncio import AsyncIOMotorClient
-from unittest.mock import AsyncMock, patch, MagicMock
+
 from main import app
-import os
-from bson import ObjectId
 
 # Configuración de base de datos de prueba
 TEST_DATABASE_URL = "mongodb://localhost:27017/test_file_management"
@@ -39,7 +41,11 @@ def client():
 @pytest.fixture
 def mock_db_client():
     """Mock para cliente de base de datos"""
-    with patch("main.file_collection") as mock_file_col, patch("main.folder_collection") as mock_folder_col, patch("main.user_collection") as mock_user_col:
+    with (
+        patch("main.file_collection") as mock_file_col,
+        patch("main.folder_collection") as mock_folder_col,
+        patch("main.user_collection") as mock_user_col,
+    ):
         # Configurar mocks para retornar listas vacías por defecto
         mock_file_col.find.return_value.to_list = AsyncMock(return_value=[])
         mock_folder_col.find.return_value.to_list = AsyncMock(return_value=[])
@@ -77,13 +83,23 @@ def mock_auth():
         patch("main.create_access_token") as mock_create_token,
     ):
         # Configure default user
-        mock_get_user.return_value = {"_id": ObjectId(), "username": "testuser", "email": "test@example.com", "role": "user"}
+        mock_get_user.return_value = {
+            "_id": ObjectId(),
+            "username": "testuser",
+            "email": "test@example.com",
+            "role": "user",
+        }
 
         mock_verify_password.return_value = True
         mock_get_hash.return_value = "hashed_password"
         mock_create_token.return_value = "fake_token"
 
-        yield {"get_current_user": mock_get_user, "verify_password": mock_verify_password, "get_password_hash": mock_get_hash, "create_access_token": mock_create_token}
+        yield {
+            "get_current_user": mock_get_user,
+            "verify_password": mock_verify_password,
+            "get_password_hash": mock_get_hash,
+            "create_access_token": mock_create_token,
+        }
 
 
 @pytest.fixture

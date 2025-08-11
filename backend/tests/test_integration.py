@@ -1,12 +1,14 @@
 """Tests de integración completos para el API"""
 
-import pytest
-from fastapi.testclient import TestClient
-from unittest.mock import patch, AsyncMock, MagicMock
-from main import app
-from bson import ObjectId
 import io
 import json
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from bson import ObjectId
+from fastapi.testclient import TestClient
+
+from main import app
 
 
 class TestIntegrationFlows:
@@ -34,7 +36,14 @@ class TestIntegrationFlows:
 
             if response.status_code == 201:
                 # 2. Login
-                mock_user_col.find_one = AsyncMock(return_value={"_id": ObjectId(), "username": "testuser", "hashed_password": "hashed_password", "role": "user"})
+                mock_user_col.find_one = AsyncMock(
+                    return_value={
+                        "_id": ObjectId(),
+                        "username": "testuser",
+                        "hashed_password": "hashed_password",
+                        "role": "user",
+                    }
+                )
 
                 login_data = {"username": "testuser", "password": "password123"}
                 response = client.post("/auth/login", data=login_data)
@@ -45,14 +54,27 @@ class TestIntegrationFlows:
                     headers = {"Authorization": f"Bearer {token}"}
 
                     # 3. Upload file
-                    with patch("main.file_collection") as mock_file_col, patch("main.minio_client") as mock_minio, patch("main.get_current_user") as mock_get_user:
+                    with (
+                        patch("main.file_collection") as mock_file_col,
+                        patch("main.minio_client") as mock_minio,
+                        patch("main.get_current_user") as mock_get_user,
+                    ):
                         mock_get_user.return_value = {"username": "testuser", "role": "user"}
                         mock_minio.put_object = MagicMock()
 
                         file_id = ObjectId()
-                        mock_file_col.insert_one = AsyncMock(return_value=type("obj", (object,), {"inserted_id": file_id})())
+                        mock_file_col.insert_one = AsyncMock(
+                            return_value=type("obj", (object,), {"inserted_id": file_id})()
+                        )
                         mock_file_col.find_one = AsyncMock(
-                            return_value={"_id": file_id, "filename": "test.txt", "size": 13, "file_type": "text/plain", "object_name": f"{file_id}.txt", "owner": "testuser"}
+                            return_value={
+                                "_id": file_id,
+                                "filename": "test.txt",
+                                "size": 13,
+                                "file_type": "text/plain",
+                                "object_name": f"{file_id}.txt",
+                                "owner": "testuser",
+                            }
                         )
 
                         test_file = io.BytesIO(b"test content")
@@ -64,7 +86,15 @@ class TestIntegrationFlows:
                             # 4. List files
                             mock_file_col.find = MagicMock()
                             mock_file_col.find.return_value.to_list = AsyncMock(
-                                return_value=[{"_id": file_id, "filename": "test.txt", "size": 13, "file_type": "text/plain", "owner": "testuser"}]
+                                return_value=[
+                                    {
+                                        "_id": file_id,
+                                        "filename": "test.txt",
+                                        "size": 13,
+                                        "file_type": "text/plain",
+                                        "owner": "testuser",
+                                    }
+                                ]
                             )
 
                             response = client.get("/files", headers=headers)
@@ -82,13 +112,19 @@ class TestIntegrationFlows:
 
     def test_folder_management_workflow(self, client):
         """Test workflow de gestión de carpetas"""
-        with patch("main.get_current_user") as mock_get_user, patch("main.folder_collection") as mock_folder_col, patch("main.file_collection") as mock_file_col:
+        with (
+            patch("main.get_current_user") as mock_get_user,
+            patch("main.folder_collection") as mock_folder_col,
+            patch("main.file_collection") as mock_file_col,
+        ):
             mock_get_user.return_value = {"username": "testuser", "role": "user"}
 
             # 1. Create folder
             folder_id = ObjectId()
             mock_folder_col.insert_one = AsyncMock(return_value=type("obj", (object,), {"inserted_id": folder_id})())
-            mock_folder_col.find_one = AsyncMock(return_value={"_id": folder_id, "name": "Test Folder", "path": "/Test Folder/", "owner": "testuser"})
+            mock_folder_col.find_one = AsyncMock(
+                return_value={"_id": folder_id, "name": "Test Folder", "path": "/Test Folder/", "owner": "testuser"}
+            )
 
             folder_data = {"name": "Test Folder"}
             headers = {"Authorization": "Bearer fake_token"}
@@ -98,7 +134,11 @@ class TestIntegrationFlows:
             if response.status_code == 201:
                 # 2. List folders
                 mock_folder_col.find = MagicMock()
-                mock_folder_col.find.return_value.to_list = AsyncMock(return_value=[{"_id": folder_id, "name": "Test Folder", "path": "/Test Folder/", "owner": "testuser"}])
+                mock_folder_col.find.return_value.to_list = AsyncMock(
+                    return_value=[
+                        {"_id": folder_id, "name": "Test Folder", "path": "/Test Folder/", "owner": "testuser"}
+                    ]
+                )
 
                 response = client.get("/folders", headers=headers)
 
@@ -246,7 +286,15 @@ class TestPerformanceBasics:
             # Simulate large file list
             large_file_list = []
             for i in range(1000):
-                large_file_list.append({"_id": ObjectId(), "filename": f"file_{i}.txt", "size": 1024, "file_type": "text/plain", "owner": "testuser"})
+                large_file_list.append(
+                    {
+                        "_id": ObjectId(),
+                        "filename": f"file_{i}.txt",
+                        "size": 1024,
+                        "file_type": "text/plain",
+                        "owner": "testuser",
+                    }
+                )
 
             mock_file_col.find = MagicMock()
             mock_file_col.find.return_value.to_list = AsyncMock(return_value=large_file_list)

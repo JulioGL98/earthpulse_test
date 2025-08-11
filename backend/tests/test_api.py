@@ -1,8 +1,10 @@
+import io
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, AsyncMock
+
 from main import app
-import io
 
 
 class TestHealthEndpoints:
@@ -62,7 +64,13 @@ class TestFileEndpoints:
 
             mock_file_col.insert_one = AsyncMock(return_value=type("obj", (object,), {"inserted_id": ObjectId()})())
             mock_file_col.find_one = AsyncMock(
-                return_value={"_id": ObjectId(), "filename": "test.txt", "size": len(b"test file content"), "file_type": "text/plain", "object_name": "some-object-name"}
+                return_value={
+                    "_id": ObjectId(),
+                    "filename": "test.txt",
+                    "size": len(b"test file content"),
+                    "file_type": "text/plain",
+                    "object_name": "some-object-name",
+                }
             )
 
             response = client.post("/files/upload", files=files, headers={"Authorization": "Bearer fake_token"})
@@ -100,7 +108,9 @@ class TestFileEndpoints:
 
         with patch("main.file_collection") as mock_file_col:
             # Mock file exists and belongs to user
-            mock_file_col.find_one = AsyncMock(return_value={"_id": ObjectId(file_id), "filename": "old_name.txt", "owner": "testuser"})
+            mock_file_col.find_one = AsyncMock(
+                return_value={"_id": ObjectId(file_id), "filename": "old_name.txt", "owner": "testuser"}
+            )
 
             # Mock successful update
             mock_file_col.update_one = AsyncMock(return_value=type("obj", (object,), {"modified_count": 1})())
@@ -119,7 +129,11 @@ class TestFileEndpoints:
                 },
             ]
 
-            response = client.put(f"/files/edit/{file_id}", json={"new_filename": "new_name.txt"}, headers={"Authorization": "Bearer fake_token"})
+            response = client.put(
+                f"/files/edit/{file_id}",
+                json={"new_filename": "new_name.txt"},
+                headers={"Authorization": "Bearer fake_token"},
+            )
 
             if response.status_code == 200:
                 assert response.status_code == 200
@@ -150,7 +164,9 @@ class TestFolderEndpoints:
 
             folder_id = ObjectId()
             mock_folder_col.insert_one = AsyncMock(return_value=type("obj", (object,), {"inserted_id": folder_id})())
-            mock_folder_col.find_one = AsyncMock(return_value={"_id": folder_id, "name": "Test Folder", "path": "/Test Folder/", "owner": "testuser"})
+            mock_folder_col.find_one = AsyncMock(
+                return_value={"_id": folder_id, "name": "Test Folder", "path": "/Test Folder/", "owner": "testuser"}
+            )
 
             response = client.post("/folders", json=folder_data, headers={"Authorization": "Bearer fake_token"})
             if response.status_code == 201:

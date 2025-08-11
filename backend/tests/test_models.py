@@ -1,8 +1,20 @@
-import pytest
-from pydantic import ValidationError
-from main import FileMetadata, FolderMetadata, CreateFolder, UpdateFileName, UserBase, UserCreate, UserInDB, Token, LoginRequest
 from datetime import datetime
+
+import pytest
 from bson import ObjectId
+from pydantic import ValidationError
+
+from main import (
+    CreateFolder,
+    FileMetadata,
+    FolderMetadata,
+    LoginRequest,
+    Token,
+    UpdateFileName,
+    UserBase,
+    UserCreate,
+    UserInDB,
+)
 
 
 class TestModels:
@@ -10,7 +22,13 @@ class TestModels:
 
     def test_file_metadata_valid(self):
         """Test crear FileMetadata válido"""
-        file_data = {"filename": "test.txt", "size": 1024, "file_type": "text/plain", "object_name": "test-object", "owner": "testuser"}
+        file_data = {
+            "filename": "test.txt",
+            "size": 1024,
+            "file_type": "text/plain",
+            "object_name": "test-object",
+            "owner": "testuser",
+        }
         file_obj = FileMetadata(**file_data)
         assert file_obj.filename == "test.txt"
         assert file_obj.size == 1024

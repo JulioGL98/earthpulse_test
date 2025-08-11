@@ -9,3 +9,7 @@ httpx
 pytest-mock
 python-jose[cryptography]
 passlib[bcrypt]
+black
+flake8
+isort
+coverage

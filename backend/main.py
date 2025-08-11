@@ -1,22 +1,26 @@
 import os
 from datetime import datetime, timedelta
-from typing import List, Optional, Any
+from typing import Any, List, Optional
 
 import uvicorn
 from bson import ObjectId
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Form, Request
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from minio import Minio
-from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, Field, field_validator
-from pydantic_core import core_schema
 
 # NUEVAS IMPORTACIONES PARA AUTH
 from jose import JWTError, jwt
+from minio import Minio
+from motor.motor_asyncio import AsyncIOMotorClient
 from passlib.context import CryptContext
+from pydantic import BaseModel, Field, field_validator
+from pydantic_core import core_schema
 
 # --- Configuración de la Aplicación FastAPI ---
-app = FastAPI(title="Google Drive Clone API", description="API para gestionar archivos, simulando la funcionalidad de Google Drive.", version="1.0.0")
+app = FastAPI(
+    title="Google Drive Clone API",
+    description="API para gestionar archivos, simulando la funcionalidad de Google Drive.",
+    version="1.0.0",
+)
 
 # --- Configuración de CORS ---
 origins = [
@@ -214,7 +218,9 @@ def is_admin(user: Optional[dict]) -> bool:
     return bool(user and user.get("role") == "admin")
 
 
-def assert_owner_or_admin(resource: Optional[dict], current_user: dict, not_found_message: str = "Recurso no encontrado"):
+def assert_owner_or_admin(
+    resource: Optional[dict], current_user: dict, not_found_message: str = "Recurso no encontrado"
+):
     """Verify that resource exists and user is owner or admin"""
     if not resource:
         raise HTTPException(status_code=404, detail=not_found_message)
@@ -346,7 +352,13 @@ async def upload_file(request: Request, file: UploadFile = File(...), folder_id:
         # Reset file pointer para MinIO
         await file.seek(0)
 
-        minio_client.put_object(BUCKET_NAME, object_name, data=file.file, length=len(contents), content_type=file.content_type or "application/octet-stream")
+        minio_client.put_object(
+            BUCKET_NAME,
+            object_name,
+            data=file.file,
+            length=len(contents),
+            content_type=file.content_type or "application/octet-stream",
+        )
 
         file_metadata = {
             "filename": file.filename,
@@ -422,7 +434,14 @@ async def download_file(request: Request, file_id: str, inline: Optional[bool] =
         # Configurar headers según el tipo de archivo y parámetro inline
         headers = {}
 
-        if inline and file_metadata["file_type"] in ["application/pdf", "image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"]:
+        if inline and file_metadata["file_type"] in [
+            "application/pdf",
+            "image/jpeg",
+            "image/png",
+            "image/gif",
+            "image/webp",
+            "image/svg+xml",
+        ]:
             # Para preview: permitir mostrar inline
             headers["Content-Disposition"] = f"inline; filename={file_metadata['filename']}"
         else:
@@ -444,7 +463,9 @@ async def edit_file_name(request: Request, file_id: str, file_update: UpdateFile
     doc = await file_collection.find_one({"_id": ObjectId(file_id)})
     assert_owner_or_admin(doc, current_user, "Archivo no encontrado")
 
-    update_result = await file_collection.update_one({"_id": ObjectId(file_id)}, {"$set": {"filename": file_update.new_filename}})
+    update_result = await file_collection.update_one(
+        {"_id": ObjectId(file_id)}, {"$set": {"filename": file_update.new_filename}}
+    )
 
     if update_result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
@@ -666,7 +687,9 @@ async def move_file(file_id: str, move_data: MoveFile):
 
     try:
         # Actualizar archivo
-        update_result = await file_collection.update_one({"_id": ObjectId(file_id)}, {"$set": {"folder_id": target_folder_id, "path": target_path}})
+        update_result = await file_collection.update_one(
+            {"_id": ObjectId(file_id)}, {"$set": {"folder_id": target_folder_id, "path": target_path}}
+        )
 
         if update_result.matched_count == 0:
             raise HTTPException(status_code=404, detail="Archivo no encontrado")
@@ -715,13 +738,17 @@ async def move_folder(folder_id: str, move_data: MoveFolder):
         target_path = f"{target_parent['path'].rstrip('/')}/{folder['name']}/"
 
     # Verificar que no existe una carpeta con el mismo nombre en el destino
-    existing_folder = await folder_collection.find_one({"name": folder["name"], "parent_folder_id": target_parent_id, "_id": {"$ne": ObjectId(folder_id)}})
+    existing_folder = await folder_collection.find_one(
+        {"name": folder["name"], "parent_folder_id": target_parent_id, "_id": {"$ne": ObjectId(folder_id)}}
+    )
     if existing_folder:
         raise HTTPException(status_code=400, detail="Ya existe una carpeta con ese nombre en el destino")
 
     try:
         # Actualizar carpeta
-        update_result = await folder_collection.update_one({"_id": ObjectId(folder_id)}, {"$set": {"parent_folder_id": target_parent_id, "path": target_path}})
+        update_result = await folder_collection.update_one(
+            {"_id": ObjectId(folder_id)}, {"$set": {"parent_folder_id": target_parent_id, "path": target_path}}
+        )
 
         if update_result.matched_count == 0:
             raise HTTPException(status_code=404, detail="Carpeta no encontrada")
@@ -784,7 +811,13 @@ async def copy_file(file_id: str, copy_data: CopyFile):
         from io import BytesIO
 
         file_stream = BytesIO(file_data)
-        minio_client.put_object(BUCKET_NAME, new_object_name, data=file_stream, length=len(file_data), content_type=file_metadata["file_type"])
+        minio_client.put_object(
+            BUCKET_NAME,
+            new_object_name,
+            data=file_stream,
+            length=len(file_data),
+            content_type=file_metadata["file_type"],
+        )
 
         # Crear metadatos para el archivo copiado
         copied_file_metadata = {
@@ -849,7 +882,11 @@ async def copy_folder(folder_id: str, copy_data: CopyFolder):
             existing_folder = await folder_collection.find_one({"name": new_name, "parent_folder_id": target_parent_id})
             if not existing_folder:
                 folder["name"] = new_name
-                target_path = f"{target_parent['path'].rstrip('/')}/{new_name}/" if copy_data.parent_folder_id else f"/{new_name}/"
+                target_path = (
+                    f"{target_parent['path'].rstrip('/')}/{new_name}/"
+                    if copy_data.parent_folder_id
+                    else f"/{new_name}/"
+                )
                 break
             counter += 1
 
@@ -881,7 +918,9 @@ async def register(user: UserCreate):
     if existing:
         raise HTTPException(status_code=400, detail="El usuario ya existe")
     hashed = get_password_hash(user.password)
-    await user_collection.insert_one({"username": user.username, "hashed_password": hashed, "created_at": datetime.utcnow(), "role": "user"})
+    await user_collection.insert_one(
+        {"username": user.username, "hashed_password": hashed, "created_at": datetime.utcnow(), "role": "user"}
+    )
     token = create_access_token({"sub": user.username})
     return Token(access_token=token)
 
