@@ -1,0 +1,23 @@
+{
+  "extends": ["eslint:recommended"],
+  "plugins": ["svelte"],
+  "env": {
+    "browser": true,
+    "es2022": true,
+    "node": true
+  },
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module"
+  },
+  "overrides": [
+    {
+      "files": ["*.svelte"],
+      "parser": "svelte-eslint-parser"
+    }
+  ],
+  "rules": {
+    "no-unused-vars": "warn",
+    "no-console": "warn"
+  }
+}

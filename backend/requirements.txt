@@ -1,0 +1,9 @@
+    fastapi
+uvicorn
+motor
+python-multipart
+minio
+pytest
+pytest-asyncio
+httpx
+pytest-mock
