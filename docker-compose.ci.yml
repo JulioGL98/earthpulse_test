@@ -4,8 +4,6 @@ services:
     build: ./backend
     ports:
       - "8000:8000"
-    volumes:
-      - ./backend:/app # Mantenemos el volumen aquí para el desarrollo del backend
     environment:
       - DATABASE_URL=mongodb://mongodb:27017
       - MINIO_URL=minio:9000
@@ -21,11 +19,9 @@ services:
   # Servicio del Frontend (SvelteKit)
   frontend:
     build:
-      context: ./frontend # Especificamos el contexto de construcción
+      context: ./frontend
     ports:
       - "5173:5173"
-    # Eliminamos el volumen problemático para evitar conflictos con node_modules
-    # El Dockerfile ya copia el código, lo que es más robusto.
     environment:
       - VITE_API_URL=http://localhost:8000
     depends_on:
@@ -63,17 +59,9 @@ networks:
   app-network:
     driver: bridge
 
-# Volúmenes para la persistencia de datos
+# Volúmenes para la persistencia de datos (Docker managed volumes for CI)
 volumes:
   mongodb_data:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./data/mongodb
   minio_data:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./data/minio
