@@ -97,7 +97,7 @@ jobs:
     - name: 📋 Instalar dependencias frontend
       working-directory: ./frontend
       run: |
-        npm ci
+        npm ci || npm install
 
     - name: 🔍 Linting frontend
       working-directory: ./frontend
