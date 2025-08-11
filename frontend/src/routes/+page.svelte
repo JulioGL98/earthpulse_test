@@ -34,6 +34,14 @@
     authUser.set(null);
     showAuthScreen.set(true);
   }
+  // Función para manejar la tecla Enter en los campos de entrada
+  function handleKeyPress(event) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      handleAuthSubmit();
+    }
+  }
+
   async function handleAuthSubmit() {
     authError.set('');
     if (!$authUsername.trim() || !$authPassword.trim()) {
@@ -869,27 +877,33 @@
       {#if $authError}
         <div class="bg-red-100 text-red-700 text-sm px-4 py-2 rounded">{$authError}</div>
       {/if}
-      <div class="space-y-4">
+      <form on:submit|preventDefault={handleAuthSubmit} class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Usuario</label>
+          <label for="username" class="block text-sm font-medium text-gray-700 mb-1">Usuario</label>
           <input
+            id="username"
             type="text"
             bind:value={$authUsername}
+            on:keydown={handleKeyPress}
             class="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             placeholder="usuario"
+            disabled={$authLoading}
           />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+          <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
           <input
+            id="password"
             type="password"
             bind:value={$authPassword}
+            on:keydown={handleKeyPress}
             class="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             placeholder="••••••••"
+            disabled={$authLoading}
           />
         </div>
         <button
-          on:click={handleAuthSubmit}
+          type="submit"
           class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-50"
           disabled={$authLoading}
         >
@@ -897,25 +911,25 @@
               ? 'Entrar'
               : 'Registrarme'}{/if}
         </button>
-        <div class="text-center text-sm text-gray-600">
-          {#if $authMode === 'login'}
-            ¿No tienes cuenta? <button
-              class="text-blue-600 hover:underline"
-              on:click={() => {
-                authMode.set('register');
-                authError.set('');
-              }}>Registrarme</button
-            >
-          {:else}
-            ¿Ya tienes cuenta? <button
-              class="text-blue-600 hover:underline"
-              on:click={() => {
-                authMode.set('login');
-                authError.set('');
-              }}>Entrar</button
-            >
-          {/if}
-        </div>
+      </form>
+      <div class="text-center text-sm text-gray-600">
+        {#if $authMode === 'login'}
+          ¿No tienes cuenta? <button
+            class="text-blue-600 hover:underline"
+            on:click={() => {
+              authMode.set('register');
+              authError.set('');
+            }}>Registrarme</button
+          >
+        {:else}
+          ¿Ya tienes cuenta? <button
+            class="text-blue-600 hover:underline"
+            on:click={() => {
+              authMode.set('login');
+              authError.set('');
+            }}>Entrar</button
+          >
+        {/if}
       </div>
     </div>
   </main>
