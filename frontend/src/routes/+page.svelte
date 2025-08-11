@@ -891,7 +891,9 @@
           />
         </div>
         <div>
-          <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+          <label for="password" class="block text-sm font-medium text-gray-700 mb-1"
+            >Contraseña</label
+          >
           <input
             id="password"
             type="password"
