@@ -636,8 +636,17 @@
     try {
       const fileType = file.file_type.toLowerCase();
       if (fileType.startsWith('image/')) {
-        previewContent.set(`${API_URL}/files/download/${file._id}`);
-        return;
+        try {
+          const resp = await authFetch(`${API_URL}/files/download/${file._id}?inline=true`);
+          if (!resp.ok) throw new Error('No se pudo cargar la imagen');
+          const blob = await resp.blob();
+          const imageUrl = URL.createObjectURL(blob);
+          previewContent.set(imageUrl);
+          return;
+        } catch (e) {
+          previewError.set('Error al cargar la vista previa de la imagen');
+          return;
+        }
       }
       if (fileType === 'application/pdf') {
         try {
@@ -675,6 +684,31 @@
     previewContent.set('');
     previewError.set('');
   }
+
+  async function downloadFile(fileId, filename) {
+    try {
+      const resp = await authFetch(`${API_URL}/files/download/${fileId}`);
+      if (!resp.ok) throw new Error('Error al descargar el archivo');
+
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+
+      // Crear enlace temporal para descargar
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      // Limpiar el blob URL
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      errorMessage.set('Error al descargar el archivo: ' + error.message);
+      setTimeout(() => errorMessage.set(''), 3000);
+    }
+  }
+
   async function loadSelectorFolderContent(folderId = 'root') {
     try {
       const response = await authFetch(`${API_URL}/folders?parent_folder_id=${folderId}`);
@@ -1183,11 +1217,9 @@
                         on:click={() => startEditingFile(file)}
                         class="text-indigo-600 hover:text-indigo-900 mr-3">✏️ Editar</button
                       >
-                      <a
-                        href="{API_URL}/files/download/{file._id}"
-                        target="_blank"
-                        class="text-green-600 hover:text-green-900 mr-3"
-                        download>⬇️ Descargar</a
+                      <button
+                        on:click={() => downloadFile(file._id, file.filename)}
+                        class="text-green-600 hover:text-green-900 mr-3">⬇️ Descargar</button
                       >
                       <button
                         on:click={() => handleDeleteFile(file._id)}
@@ -1311,11 +1343,9 @@
                         on:click={() => startEditingFile(file)}
                         class="text-xs text-indigo-600 hover:text-indigo-900">✏️</button
                       >
-                      <a
-                        href="{API_URL}/files/download/{file._id}"
-                        target="_blank"
-                        class="text-xs text-green-600 hover:text-green-900"
-                        download>⬇️</a
+                      <button
+                        on:click={() => downloadFile(file._id, file.filename)}
+                        class="text-xs text-green-600 hover:text-green-900">⬇️</button
                       >
                       <button
                         on:click={() => handleDeleteFile(file._id)}
@@ -1498,14 +1528,12 @@
                 <div class="text-center py-8">
                   <div class="text-4xl mb-4">📄</div>
                   <p class="text-gray-600">Este tipo de archivo no se puede previsualizar</p>
-                  <a
-                    href="{API_URL}/files/download/{$previewFile._id}"
-                    target="_blank"
+                  <button
+                    on:click={() => downloadFile($previewFile._id, $previewFile.filename)}
                     class="inline-block mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    download
                   >
                     ⬇️ Descargar archivo
-                  </a>
+                  </button>
                 </div>
               {/if}
             {/if}
@@ -1519,14 +1547,12 @@
               {/if}
             </div>
             <div class="flex space-x-2">
-              <a
-                href="{API_URL}/files/download/{$previewFile?._id}"
-                target="_blank"
+              <button
+                on:click={() => downloadFile($previewFile?._id, $previewFile?.filename)}
                 class="px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors"
-                download
               >
                 ⬇️ Descargar
-              </a>
+              </button>
               <button
                 on:click={closePreview}
                 class="px-3 py-1.5 bg-gray-600 text-white text-sm rounded hover:bg-gray-700 transition-colors"
