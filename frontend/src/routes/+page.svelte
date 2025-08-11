@@ -291,7 +291,7 @@
   }
 
   /**
-   * Sube un archivo individual con seguimiento de progreso
+   * Sube un archivo individual with seguimiento de progreso
    */
   function uploadFileWithProgress(file, folderId = null) {
     return new Promise((resolve, reject) => {
@@ -1068,8 +1068,12 @@
 
           <!-- Sort Controls -->
           <div class="flex items-center space-x-2">
-            <label class="text-sm text-gray-600">Ordenar por:</label>
-            <select bind:value={$sortBy} class="px-3 py-1 border border-gray-300 rounded text-sm">
+            <label for="sort-by" class="text-sm text-gray-600">Ordenar por:</label>
+            <select
+              id="sort-by"
+              bind:value={$sortBy}
+              class="px-3 py-1 border border-gray-300 rounded text-sm"
+            >
               <option value="name">Nombre</option>
               <option value="date">Fecha</option>
               <option value="size">Tamaño</option>
@@ -1086,19 +1090,31 @@
       </div>
 
       <!-- File Upload Area -->
+      <!-- File Upload Area -->
       <div
         class="bg-white p-6 rounded-lg shadow-sm mb-6 border-2 border-dashed transition-all duration-300 {isDropping
           ? 'border-blue-500 bg-blue-50'
           : 'border-gray-300'}"
+        role="button"
+        tabindex="0"
+        aria-label="Área de carga de archivos. Arrastra archivos aquí o presiona Enter para seleccionar archivos"
+        aria-describedby="upload-instructions"
         on:dragenter={handleDragEnter}
         on:dragleave={handleDragLeave}
         on:dragover|preventDefault
         on:drop={handleDrop}
+        on:keydown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            document.getElementById('file-upload').click();
+          }
+        }}
       >
         <div class="text-center">
           <div class="text-4xl mb-4">📤</div>
           <h3 class="text-lg font-medium text-gray-900 mb-2">Subir archivos</h3>
-          <p class="text-gray-600 mb-4">Arrastra archivos aquí o selecciona desde tu computadora</p>
+          <p id="upload-instructions" class="text-gray-600 mb-4">
+            Arrastra archivos aquí o selecciona desde tu computadora
+          </p>
           <label
             for="file-upload"
             class="inline-flex items-center px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 cursor-pointer transition-colors"
@@ -1195,14 +1211,16 @@
                         on:click={(e) => e.stopPropagation()}
                       />
                     </td>
-                    <td
-                      class="px-6 py-4 whitespace-nowrap cursor-pointer"
-                      on:click={() => navigateToFolder(folder._id)}
-                    >
-                      <div class="flex items-center">
+                    <td class="px-6 py-4 whitespace-nowrap">
+                      <button
+                        type="button"
+                        class="flex items-center w-full text-left hover:text-blue-600 transition-colors"
+                        on:click={() => navigateToFolder(folder._id)}
+                        aria-label="Abrir carpeta {folder.name}"
+                      >
                         <span class="text-2xl mr-3">📁</span>
                         <span class="text-sm font-medium text-gray-900">{folder.name}</span>
-                      </div>
+                      </button>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">—</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
@@ -1244,7 +1262,6 @@
                               if (e.key === 'Escape') cancelEditing();
                             }}
                             placeholder="Nombre del archivo"
-                            autofocus
                           />
                           <button
                             on:click={() => saveFileName(file._id, true)}
@@ -1318,13 +1335,15 @@
               <div class="flex items-center space-x-3">
                 <input
                   type="checkbox"
+                  id="select-all-checkbox"
                   bind:checked={$selectAll}
                   on:change={toggleSelectAll}
                   class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
-                <label class="text-sm text-gray-600">Seleccionar todo</label>
+                <label for="select-all-checkbox" class="text-sm text-gray-600">
+                  Seleccionar todo
+                </label>
               </div>
-
               {#if $showBulkActions}
                 <div class="text-sm text-gray-600">
                   {$selectedFiles.size + $selectedFolders.size} elemento(s) seleccionado(s)
@@ -1339,30 +1358,35 @@
                   <!-- Checkbox -->
                   <input
                     type="checkbox"
+                    id="folder-checkbox-{folder._id}"
                     checked={$selectedFolders.has(folder._id)}
                     on:change={() => toggleFolderSelection(folder._id)}
                     class="absolute top-2 left-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded z-10"
                     on:click={(e) => e.stopPropagation()}
+                    aria-label="Seleccionar carpeta {folder.name}"
                   />
-                  <div
-                    class="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 cursor-pointer transition-colors"
+                  <button
+                    type="button"
+                    class="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 cursor-pointer transition-colors w-full text-left"
                     on:click={() => navigateToFolder(folder._id)}
+                    aria-label="Abrir carpeta {folder.name}"
                   >
                     <div class="text-center">
                       <div class="text-4xl mb-2">📁</div>
                       <p class="text-sm font-medium text-gray-900 truncate">{folder.name}</p>
                       <p class="text-xs text-gray-500 mt-1">{formatDate(folder.created_date)}</p>
                     </div>
-                  </div>
+                  </button>
                   <button
+                    type="button"
                     on:click={() => deleteFolder(folder._id)}
                     class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs transition-opacity"
+                    aria-label="Eliminar carpeta {folder.name}"
                   >
                     ✕
                   </button>
                 </div>
               {/each}
-
               <!-- Files -->
               {#each sortedFiles as file (file._id)}
                 <div class="relative group">
@@ -1551,10 +1575,18 @@
       <div
         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 preview-modal"
         on:click={closePreview}
+        on:keydown={(e) => {
+          if (e.key === 'Escape') closePreview();
+        }}
+        role="button"
+        tabindex="0"
+        aria-label="Cerrar modal de preview (presiona Escape o clica fuera del contenido)"
       >
         <div
           class="bg-white rounded-lg shadow-xl max-w-4xl max-h-[90vh] w-full mx-4 overflow-hidden preview-modal-content"
-          on:click={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="preview-title"
         >
           <!-- Header del modal -->
           <div class="flex items-center justify-between p-4 border-b border-gray-200">
@@ -1572,8 +1604,10 @@
               </div>
             </div>
             <button
+              type="button"
               on:click={closePreview}
               class="text-gray-400 hover:text-gray-600 text-2xl font-bold"
+              aria-label="Cerrar modal"
             >
               ✕
             </button>
@@ -1659,17 +1693,25 @@
       <div
         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
         on:click={closeFolderSelector}
+        on:keydown={(e) => {
+          if (e.key === 'Escape') closeFolderSelector();
+        }}
+        role="button"
+        tabindex="0"
+        aria-label="Cerrar modal selector de carpetas (presiona Escape o clica fuera del contenido)"
       >
         <div
           class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden"
-          on:click={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="selector-title"
         >
           <!-- Header del modal -->
           <div class="flex items-center justify-between p-4 border-b border-gray-200">
             <div class="flex items-center space-x-3">
               <span class="text-2xl">{$selectorMode === 'move' ? '📁' : '📋'}</span>
               <div>
-                <h3 class="text-lg font-semibold text-gray-900">
+                <h3 id="selector-title" class="text-lg font-semibold text-gray-900">
                   {$selectorMode === 'move'
                     ? 'Seleccionar Carpeta de Destino'
                     : 'Seleccionar Carpeta para Copiar'}
@@ -1709,12 +1751,14 @@
           <!-- Lista de carpetas -->
           <div class="p-4 overflow-y-auto max-h-[50vh]">
             <!-- Opción de raíz -->
-            <div
-              class="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-100 cursor-pointer border-2 transition-colors {$selectedTargetFolder ===
+            <button
+              type="button"
+              class="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-100 cursor-pointer border-2 transition-colors w-full text-left {$selectedTargetFolder ===
               null
                 ? 'border-blue-500 bg-blue-50'
                 : 'border-transparent'}"
               on:click={() => selectTargetFolder(null)}
+              aria-label="Seleccionar carpeta raíz como destino"
             >
               <span class="text-2xl">🏠</span>
               <div class="flex-1">
@@ -1728,16 +1772,18 @@
               {#if $selectedTargetFolder === null}
                 <span class="text-blue-600 text-xl">✓</span>
               {/if}
-            </div>
+            </button>
 
             <!-- Carpetas disponibles -->
             {#each $allFolders as folder}
-              <div
-                class="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-100 cursor-pointer border-2 transition-colors {$selectedTargetFolder?._id ===
+              <button
+                type="button"
+                class="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-100 cursor-pointer border-2 transition-colors w-full text-left {$selectedTargetFolder?._id ===
                 folder._id
                   ? 'border-blue-500 bg-blue-50'
                   : 'border-transparent'}"
                 on:click={() => selectTargetFolder(folder)}
+                aria-label="Seleccionar carpeta {folder.name} como destino"
               >
                 <span class="text-2xl">📁</span>
                 <div class="flex-1">
@@ -1755,11 +1801,12 @@
                     }}
                     class="px-2 py-1 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300 transition-colors"
                     title="Explorar carpeta"
+                    aria-label="Explorar subcarpetas de {folder.name}"
                   >
                     ➡️
                   </button>
                 </div>
-              </div>
+              </button>
             {/each}
 
             {#if $allFolders.length === 0}
@@ -1847,10 +1894,6 @@
     to {
       width: var(--progress-width, 0%);
     }
-  }
-
-  .fade-in {
-    animation: fadeIn 0.3s ease-out;
   }
 
   .loading-popup {
