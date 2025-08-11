@@ -28,6 +28,12 @@
   let selectedFolders = writable(new Set());
   let selectAll = writable(false);
   let showBulkActions = writable(false);
+  
+  // --- Variables para preview ---
+  let showPreview = writable(false);
+  let previewFile = writable(null);
+  let previewContent = writable('');
+  let previewError = writable('');
 
   const API_URL = 'http://localhost:8000';
 
@@ -695,6 +701,76 @@
     }
   }
 
+  // --- Funciones de Preview ---
+  
+  /**
+   * Determina si un archivo se puede previsualizar
+   */
+  function canPreview(fileType) {
+    const previewableTypes = [
+      'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
+      'text/plain', 'text/html', 'text/css', 'text/javascript', 'application/javascript',
+      'application/json', 'text/markdown', 'text/csv',
+      'application/pdf'
+    ];
+    
+    return previewableTypes.includes(fileType.toLowerCase());
+  }
+
+  /**
+   * Abre el preview de un archivo
+   */
+  async function openPreview(file) {
+    previewFile.set(file);
+    previewContent.set('');
+    previewError.set('');
+    showPreview.set(true);
+    
+    try {
+      const fileType = file.file_type.toLowerCase();
+      
+      // Archivos de imagen
+      if (fileType.startsWith('image/')) {
+        previewContent.set(`${API_URL}/files/download/${file._id}`);
+        return;
+      }
+      
+      // PDF
+      if (fileType === 'application/pdf') {
+        previewContent.set(`${API_URL}/files/download/${file._id}`);
+        return;
+      }
+      
+      // Archivos de texto
+      if (fileType.startsWith('text/') || 
+          fileType === 'application/json' || 
+          fileType === 'application/javascript') {
+        
+        const response = await fetch(`${API_URL}/files/download/${file._id}`);
+        if (!response.ok) {
+          throw new Error('Error al cargar el archivo');
+        }
+        
+        const text = await response.text();
+        previewContent.set(text);
+        return;
+      }
+      
+    } catch (error) {
+      previewError.set('Error al cargar la previsualización: ' + error.message);
+    }
+  }
+
+  /**
+   * Cierra el preview
+   */
+  function closePreview() {
+    showPreview.set(false);
+    previewFile.set(null);
+    previewContent.set('');
+    previewError.set('');
+  }
+
   // --- Reactive Statements ---
   $: sortedFiles = sortItems($files, $sortBy, $sortOrder);
   $: sortedFolders = sortItems($folders, $sortBy, $sortOrder);
@@ -1017,6 +1093,9 @@
                   <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatBytes(file.size)}</td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(file.upload_date)}</td>
                   <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    {#if canPreview(file.file_type)}
+                      <button on:click={() => openPreview(file)} class="text-blue-600 hover:text-blue-900 mr-3">👁️ Preview</button>
+                    {/if}
                     <button on:click={() => startEditingFile(file)} class="text-indigo-600 hover:text-indigo-900 mr-3">✏️ Editar</button>
                     <a href="{API_URL}/files/download/{file._id}" target="_blank" class="text-green-600 hover:text-green-900 mr-3" download>⬇️ Descargar</a>
                     <button on:click={() => handleDeleteFile(file._id)} class="text-red-600 hover:text-red-900">🗑️ Eliminar</button>
@@ -1125,6 +1204,9 @@
                   
                   <!-- File Actions -->
                   <div class="mt-3 flex justify-center space-x-2">
+                    {#if canPreview(file.file_type)}
+                      <button on:click={() => openPreview(file)} class="text-xs text-blue-600 hover:text-blue-900" title="Preview">👁️</button>
+                    {/if}
                     <button on:click={() => startEditingFile(file)} class="text-xs text-indigo-600 hover:text-indigo-900">✏️</button>
                     <a href="{API_URL}/files/download/{file._id}" target="_blank" class="text-xs text-green-600 hover:text-green-900" download>⬇️</a>
                     <button on:click={() => handleDeleteFile(file._id)} class="text-xs text-red-600 hover:text-red-900">🗑️</button>
@@ -1225,6 +1307,105 @@
       </div>
     {/if}
   </div>
+
+  <!-- Modal de Preview -->
+  {#if $showPreview}
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 preview-modal" on:click={closePreview}>
+      <div class="bg-white rounded-lg shadow-xl max-w-4xl max-h-[90vh] w-full mx-4 overflow-hidden preview-modal-content" on:click={(e) => e.stopPropagation()}>
+        <!-- Header del modal -->
+        <div class="flex items-center justify-between p-4 border-b border-gray-200">
+          <div class="flex items-center space-x-3">
+            <span class="text-2xl">{$previewFile ? getFileIcon($previewFile.file_type) : '📄'}</span>
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900">{$previewFile?.filename || 'Preview'}</h3>
+              <p class="text-sm text-gray-500">{$previewFile ? formatBytes($previewFile.size) : ''}</p>
+            </div>
+          </div>
+          <button
+            on:click={closePreview}
+            class="text-gray-400 hover:text-gray-600 text-2xl font-bold"
+          >
+            ✕
+          </button>
+        </div>
+
+        <!-- Contenido del preview -->
+        <div class="p-4 overflow-auto max-h-[calc(90vh-120px)]">
+          {#if $previewError}
+            <div class="text-center py-8">
+              <div class="text-4xl mb-4">⚠️</div>
+              <p class="text-red-600">{$previewError}</p>
+            </div>
+          {:else if $previewFile}
+            {#if $previewFile.file_type.startsWith('image/')}
+              <!-- Preview de imagen -->
+              <div class="text-center">
+                <img
+                  src={$previewContent}
+                  alt={$previewFile.filename}
+                  class="max-w-full max-h-[70vh] object-contain mx-auto rounded"
+                  on:error={() => previewError.set('Error al cargar la imagen')}
+                />
+              </div>
+            {:else if $previewFile.file_type === 'application/pdf'}
+              <!-- Preview de PDF -->
+              <div class="w-full h-[70vh]">
+                <iframe
+                  src={$previewContent}
+                  class="w-full h-full border-0 rounded"
+                  title="PDF Preview"
+                ></iframe>
+              </div>
+            {:else if $previewFile.file_type.startsWith('text/') || $previewFile.file_type === 'application/json' || $previewFile.file_type === 'application/javascript'}
+              <!-- Preview de texto -->
+              <div class="bg-gray-50 rounded-lg p-4">
+                <pre class="text-sm text-gray-800 whitespace-pre-wrap overflow-auto max-h-[60vh] font-mono">{$previewContent}</pre>
+              </div>
+            {:else}
+              <!-- Tipo no soportado -->
+              <div class="text-center py-8">
+                <div class="text-4xl mb-4">📄</div>
+                <p class="text-gray-600">Este tipo de archivo no se puede previsualizar</p>
+                <a
+                  href="{API_URL}/files/download/{$previewFile._id}"
+                  target="_blank"
+                  class="inline-block mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  download
+                >
+                  ⬇️ Descargar archivo
+                </a>
+              </div>
+            {/if}
+          {/if}
+        </div>
+
+        <!-- Footer del modal -->
+        <div class="flex items-center justify-between p-4 border-t border-gray-200 bg-gray-50">
+          <div class="text-sm text-gray-600">
+            {#if $previewFile}
+              Tipo: {$previewFile.file_type} • Subido: {formatDate($previewFile.upload_date)}
+            {/if}
+          </div>
+          <div class="flex space-x-2">
+            <a
+              href="{API_URL}/files/download/{$previewFile?._id}"
+              target="_blank"
+              class="px-3 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors"
+              download
+            >
+              ⬇️ Descargar
+            </a>
+            <button
+              on:click={closePreview}
+              class="px-3 py-1.5 bg-gray-600 text-white text-sm rounded hover:bg-gray-700 transition-colors"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  {/if}
 </main>
 
 <style>
@@ -1334,5 +1515,25 @@
   @keyframes shimmer {
     0% { left: -100%; }
     100% { left: 100%; }
+  }
+  
+  /* Estilos para el modal de preview */
+  .preview-modal {
+    backdrop-filter: blur(4px);
+  }
+  
+  .preview-modal-content {
+    animation: modalSlideIn 0.3s ease-out;
+  }
+  
+  @keyframes modalSlideIn {
+    from {
+      opacity: 0;
+      transform: scale(0.9) translateY(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
   }
 </style>
