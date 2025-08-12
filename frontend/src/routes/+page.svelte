@@ -33,6 +33,12 @@
     authToken.set(null);
     authUser.set(null);
     showAuthScreen.set(true);
+    // Limpiar estados de loading y error
+    authLoading.set(false);
+    authError.set('');
+    // Limpiar campos de entrada
+    authUsername.set('');
+    authPassword.set('');
   }
   // Función para manejar la tecla Enter en los campos de entrada
   function handleKeyPress(event) {
@@ -48,35 +54,72 @@
       authError.set('Usuario y contraseña requeridos');
       return;
     }
+
+    const maxRetries = 5;
+    let retryCount = 0;
+
     authLoading.set(true);
-    try {
-      const endpoint = $authMode === 'login' ? '/auth/login' : '/auth/register';
-      const resp = await fetch(`${API_URL}${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: $authUsername.trim(), password: $authPassword }),
-      });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error(err.detail || 'Error de autenticación');
+
+    while (retryCount < maxRetries) {
+      try {
+        const endpoint = $authMode === 'login' ? '/auth/login' : '/auth/register';
+        const resp = await fetch(`${API_URL}${endpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: $authUsername.trim(), password: $authPassword }),
+        });
+
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.detail || 'Error de autenticación');
+        }
+
+        const data = await resp.json();
+        if (data.access_token) {
+          saveToken(data.access_token);
+          authUser.set($authUsername.trim());
+          showAuthScreen.set(false);
+          // limpiar campos
+          authPassword.set('');
+          authError.set('');
+          // CARGAR CONTENIDO INMEDIATAMENTE DESPUÉS DEL LOGIN EXITOSO
+          await loadFolderContent('root');
+          return; // Salir exitosamente
+        } else {
+          throw new Error('Token no recibido');
+        }
+      } catch (e) {
+        console.log('Error en intento de login:', e.message);
+
+        // Si es un error de red (failed to fetch) y no hemos alcanzado el máximo de reintentos
+        if (
+          (e.message.toLowerCase().includes('failed to fetch') ||
+            e.message.toLowerCase().includes('network error') ||
+            e.message.toLowerCase().includes('fetch')) &&
+          retryCount < maxRetries - 1
+        ) {
+          retryCount++;
+
+          // Esperar un tiempo antes del siguiente intento (backoff exponencial)
+          const waitTime = Math.min(1000 * Math.pow(2, retryCount - 1), 5000);
+
+          await new Promise((resolve) => setTimeout(resolve, waitTime));
+          continue;
+        } else {
+          // Error no relacionado con la red o hemos agotado los reintentos
+          if (retryCount >= maxRetries - 1) {
+            authError.set(
+              'No se pudo conectar al servidor. Verifica tu conexión e inténtalo de nuevo.'
+            );
+          } else {
+            authError.set(e.message);
+          }
+          break;
+        }
       }
-      const data = await resp.json();
-      if (data.access_token) {
-        saveToken(data.access_token);
-        authUser.set($authUsername.trim());
-        showAuthScreen.set(false);
-        // limpiar campos
-        authPassword.set('');
-        // CARGAR CONTENIDO INMEDIATAMENTE DESPUÉS DEL LOGIN EXITOSO
-        await loadFolderContent('root');
-      } else {
-        throw new Error('Token no recibido');
-      }
-    } catch (e) {
-      authError.set(e.message);
-    } finally {
-      authLoading.set(false);
     }
+
+    authLoading.set(false);
   }
 
   // --- Interceptor fetch helper con token ---
@@ -909,9 +952,16 @@
           class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-50"
           disabled={$authLoading}
         >
-          {#if $authLoading}Procesando...{:else}{$authMode === 'login'
-              ? 'Entrar'
-              : 'Registrarme'}{/if}
+          {#if $authLoading}
+            <div class="flex items-center justify-center space-x-2">
+              <div
+                class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"
+              ></div>
+              <span>Cargando...</span>
+            </div>
+          {:else}
+            {$authMode === 'login' ? 'Entrar' : 'Registrarme'}
+          {/if}
         </button>
       </form>
       <div class="text-center text-sm text-gray-600">
