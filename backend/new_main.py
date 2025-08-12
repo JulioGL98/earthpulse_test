@@ -37,10 +37,11 @@ async def auth_middleware(request: Request, call_next):
     try:
         user = await AuthMiddleware.get_current_user(request)
         request.state.user = user
-        response = await call_next(request)
-        return response
     except HTTPException as e:
-        raise e
+        return e
+
+    response = await call_next(request)
+    return response
 
 
 # Incluir routers

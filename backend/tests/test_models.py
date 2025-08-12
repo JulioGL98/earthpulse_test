@@ -4,17 +4,9 @@ import pytest
 from bson import ObjectId
 from pydantic import ValidationError
 
-from main import (
-    CreateFolder,
-    FileMetadata,
-    FolderMetadata,
-    LoginRequest,
-    Token,
-    UpdateFileName,
-    UserBase,
-    UserCreate,
-    UserInDB,
-)
+from app.models.file import FileMetadata, UpdateFileName
+from app.models.folder import FolderMetadata, CreateFolder
+from app.models.user import UserBase, UserCreate, UserInDB, LoginRequest, Token
 
 
 class TestModels:

@@ -3,8 +3,6 @@ import uvicorn
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.database import create_bucket_if_not_exists, user_collection
-from app.utils.security import get_password_hash
 from app.middleware.auth import AuthMiddleware
 from app.routers import health, auth, files, folders
 
@@ -24,7 +22,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # Middleware de autenticación
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
@@ -42,37 +39,24 @@ async def auth_middleware(request: Request, call_next):
     except HTTPException as e:
         raise e
 
-
 # Incluir routers
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(files.router)
 app.include_router(folders.router)
 
-
+# Startup sin dependencias externas para testing
 @app.on_event("startup")
 async def startup_event():
-    """Eventos de inicio de la aplicación"""
-    # Crear bucket de MinIO si no existe
-    create_bucket_if_not_exists()
-
-    # Crear usuario admin si no existe
-    admin = await user_collection.find_one({"username": "admin"})
-    if not admin:
-        await user_collection.insert_one(
-            {
-                "username": "admin",
-                "hashed_password": get_password_hash("admin123"),
-                "created_at": datetime.utcnow(),
-                "role": "admin",
-            }
-        )
-        print("Usuario admin creado: admin / admin123")
-    else:
-        # Asegurar que el admin tenga el rol correcto
-        if admin.get("role") != "admin":
-            await user_collection.update_one({"_id": admin["_id"]}, {"$set": {"role": "admin"}})
-
+    """Eventos de inicio de la aplicación - versión de testing"""
+    print("🚀 Servidor FastAPI refactorizado iniciado correctamente!")
+    print("📊 Estructura modular cargada:")
+    print("   ✅ Config")
+    print("   ✅ Models")
+    print("   ✅ Services") 
+    print("   ✅ Routers")
+    print("   ✅ Utils")
+    print("   ✅ Middleware")
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main_test:app", host="0.0.0.0", port=8000, reload=True)

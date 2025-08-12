@@ -8,7 +8,8 @@ from fastapi.testclient import TestClient
 from httpx import AsyncClient
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from main import app
+# Import the new modular structure
+from main_test import app  # Use test version that doesn't require external services
 
 # Configuración de base de datos de prueba
 TEST_DATABASE_URL = "mongodb://localhost:27017/test_file_management"
@@ -42,9 +43,9 @@ def client():
 def mock_db_client():
     """Mock para cliente de base de datos"""
     with (
-        patch("main.file_collection") as mock_file_col,
-        patch("main.folder_collection") as mock_folder_col,
-        patch("main.user_collection") as mock_user_col,
+        patch("app.database.file_collection") as mock_file_col,
+        patch("app.database.folder_collection") as mock_folder_col,
+        patch("app.database.user_collection") as mock_user_col,
     ):
         # Configurar mocks para retornar listas vacías por defecto
         mock_file_col.find.return_value.to_list = AsyncMock(return_value=[])
@@ -62,7 +63,7 @@ def mock_db_client():
 @pytest.fixture
 def mock_minio():
     """Mock para cliente MinIO"""
-    with patch("main.minio_client") as mock_minio_client:
+    with patch("app.database.minio_client") as mock_minio_client:
         # Configure common MinIO operations
         mock_minio_client.bucket_exists.return_value = True
         mock_minio_client.make_bucket = MagicMock()
@@ -77,10 +78,10 @@ def mock_minio():
 def mock_auth():
     """Mock para funciones de autenticación"""
     with (
-        patch("main.get_current_user") as mock_get_user,
-        patch("main.verify_password") as mock_verify_password,
-        patch("main.get_password_hash") as mock_get_hash,
-        patch("main.create_access_token") as mock_create_token,
+        patch("app.services.auth_service.AuthService.get_user") as mock_get_user,
+        patch("app.utils.security.verify_password") as mock_verify_password,
+        patch("app.utils.security.get_password_hash") as mock_get_hash,
+        patch("app.utils.security.create_access_token") as mock_create_token,
     ):
         # Configure default user
         mock_get_user.return_value = {
