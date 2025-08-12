@@ -22,6 +22,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # Middleware de autenticación
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
@@ -39,11 +40,13 @@ async def auth_middleware(request: Request, call_next):
     except HTTPException as e:
         raise e
 
+
 # Incluir routers
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(files.router)
 app.include_router(folders.router)
+
 
 # Startup sin dependencias externas para testing
 @app.on_event("startup")
@@ -53,10 +56,11 @@ async def startup_event():
     print("📊 Estructura modular cargada:")
     print("   ✅ Config")
     print("   ✅ Models")
-    print("   ✅ Services") 
+    print("   ✅ Services")
     print("   ✅ Routers")
     print("   ✅ Utils")
     print("   ✅ Middleware")
+
 
 if __name__ == "__main__":
     uvicorn.run("main_test:app", host="0.0.0.0", port=8000, reload=True)
