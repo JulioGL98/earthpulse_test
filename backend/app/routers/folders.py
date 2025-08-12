@@ -1,6 +1,6 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends
-from app.models.folder import FolderMetadata, CreateFolder
+from app.models.folder import FolderMetadata, CreateFolder, MoveFolder, CopyFolder
 from app.services.folder_service import FolderService
 from app.middleware.auth import AuthMiddleware
 
@@ -36,3 +36,15 @@ async def delete_folder(folder_id: str, current_user: dict = Depends(AuthMiddlew
     """Elimina una carpeta y todo su contenido"""
     await FolderService.delete_folder(folder_id, current_user)
     return
+
+
+@router.patch("/{folder_id}/move", response_model=FolderMetadata)
+async def move_folder(folder_id: str, move_data: MoveFolder, current_user: dict = Depends(AuthMiddleware.get_current_user)):
+    """Mueve una carpeta a otra ubicación"""
+    return await FolderService.move_folder(folder_id, move_data.parent_folder_id, current_user)
+
+
+@router.post("/{folder_id}/copy", response_model=FolderMetadata, status_code=201)
+async def copy_folder(folder_id: str, copy_data: CopyFolder, current_user: dict = Depends(AuthMiddleware.get_current_user)):
+    """Copia una carpeta a otra ubicación"""
+    return await FolderService.copy_folder(folder_id, copy_data.parent_folder_id, current_user)

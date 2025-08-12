@@ -1,7 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import StreamingResponse
-from app.models.file import FileMetadata, UpdateFileName
+from app.models.file import FileMetadata, UpdateFileName, MoveFile, CopyFile
 from app.services.file_service import FileService
 from app.middleware.auth import AuthMiddleware
 
@@ -54,3 +54,15 @@ async def delete_file(file_id: str, current_user: dict = Depends(AuthMiddleware.
     """Elimina un archivo"""
     await FileService.delete_file(file_id, current_user)
     return
+
+
+@router.patch("/{file_id}/move", response_model=FileMetadata)
+async def move_file(file_id: str, move_data: MoveFile, current_user: dict = Depends(AuthMiddleware.get_current_user)):
+    """Mueve un archivo a otra carpeta"""
+    return await FileService.move_file(file_id, move_data.folder_id, current_user)
+
+
+@router.post("/{file_id}/copy", response_model=FileMetadata, status_code=201)
+async def copy_file(file_id: str, copy_data: CopyFile, current_user: dict = Depends(AuthMiddleware.get_current_user)):
+    """Copia un archivo a otra carpeta"""
+    return await FileService.copy_file(file_id, copy_data.folder_id, current_user)

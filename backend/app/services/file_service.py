@@ -2,6 +2,7 @@ from typing import List, Optional
 from datetime import datetime
 from bson import ObjectId
 from fastapi import UploadFile
+from minio.api import CopySource
 from app.database import file_collection, folder_collection, minio_client
 from app.config import settings
 from app.models.file import FileMetadata, UpdateFileName, MoveFile, CopyFile
@@ -149,3 +150,75 @@ class FileService:
             return minio_client.get_object(settings.BUCKET_NAME, file_doc["object_name"])
         except Exception as e:
             raise InternalServerException(f"Error al descargar el archivo: {str(e)}")
+
+    @staticmethod
+    async def move_file(file_id: str, folder_id: Optional[str], current_user: dict) -> dict:
+        """Mueve un archivo a otra carpeta"""
+        file_oid = validate_object_id(file_id, "ID de archivo")
+        file_doc = await file_collection.find_one({"_id": file_oid})
+        FileService._check_ownership(file_doc, current_user, "Archivo no encontrado")
+
+        # Validar carpeta destino si se proporciona
+        new_folder_path = "/"
+        if folder_id and folder_id != "root":
+            folder_oid = validate_object_id(folder_id, "ID de carpeta destino")
+            folder = await folder_collection.find_one({"_id": folder_oid})
+            FileService._check_ownership(folder, current_user, "Carpeta destino no encontrada")
+            new_folder_path = folder["path"]
+            folder_id = folder_oid
+        else:
+            folder_id = None
+
+        # Actualizar archivo
+        update_result = await file_collection.update_one({"_id": file_oid}, {"$set": {"folder_id": folder_id, "path": new_folder_path}})
+
+        if update_result.matched_count == 0:
+            raise NotFoundException("Archivo no encontrado")
+
+        updated_file = await file_collection.find_one({"_id": file_oid})
+        return updated_file
+
+    @staticmethod
+    async def copy_file(file_id: str, folder_id: Optional[str], current_user: dict) -> dict:
+        """Copia un archivo a otra carpeta"""
+        file_oid = validate_object_id(file_id, "ID de archivo")
+        file_doc = await file_collection.find_one({"_id": file_oid})
+        FileService._check_ownership(file_doc, current_user, "Archivo no encontrado")
+
+        # Validar carpeta destino si se proporciona
+        new_folder_path = "/"
+        if folder_id and folder_id != "root":
+            folder_oid = validate_object_id(folder_id, "ID de carpeta destino")
+            folder = await folder_collection.find_one({"_id": folder_oid})
+            FileService._check_ownership(folder, current_user, "Carpeta destino no encontrada")
+            new_folder_path = folder["path"]
+            folder_id = folder_oid
+        else:
+            folder_id = None
+
+        try:
+            # Copiar archivo en MinIO
+            original_object_name = file_doc["object_name"]
+            new_object_name = f"{ObjectId()}-{file_doc['filename']}"
+
+            # Usar copy_object con la sintaxis correcta de MinIO
+            minio_client.copy_object(settings.BUCKET_NAME, new_object_name, CopySource(settings.BUCKET_NAME, original_object_name))
+
+            # Crear nueva entrada en MongoDB
+            new_file_metadata = {
+                "filename": file_doc["filename"],
+                "size": file_doc["size"],
+                "upload_date": datetime.utcnow(),
+                "file_type": file_doc["file_type"],
+                "object_name": new_object_name,
+                "folder_id": folder_id,
+                "path": new_folder_path,
+                "owner": current_user.get("username"),
+            }
+
+            result = await file_collection.insert_one(new_file_metadata)
+            copied_file = await file_collection.find_one({"_id": result.inserted_id})
+            return copied_file
+
+        except Exception as e:
+            raise InternalServerException(f"Error al copiar el archivo: {str(e)}")

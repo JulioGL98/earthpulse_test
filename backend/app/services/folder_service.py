@@ -1,6 +1,7 @@
 from typing import List, Optional
 from datetime import datetime
 from bson import ObjectId
+from minio.api import CopySource
 from app.database import folder_collection, file_collection, minio_client
 from app.config import settings
 from app.models.folder import FolderMetadata, CreateFolder
@@ -144,3 +145,163 @@ class FolderService:
 
         except Exception as e:
             raise InternalServerException(f"Error al eliminar la carpeta: {str(e)}")
+
+    @staticmethod
+    async def move_folder(folder_id: str, parent_folder_id: Optional[str], current_user: dict) -> dict:
+        """Mueve una carpeta a otra ubicación"""
+        folder_oid = validate_object_id(folder_id, "ID de carpeta")
+        folder = await folder_collection.find_one({"_id": folder_oid})
+        FolderService._check_ownership(folder, current_user, "Carpeta no encontrada")
+
+        # Validar carpeta padre destino si se proporciona
+        new_parent_path = "/"
+        if parent_folder_id and parent_folder_id != "root":
+            parent_oid = validate_object_id(parent_folder_id, "ID de carpeta padre")
+            parent_folder = await folder_collection.find_one({"_id": parent_oid})
+            FolderService._check_ownership(parent_folder, current_user, "Carpeta padre no encontrada")
+
+            # Verificar que no estemos moviendo una carpeta dentro de sí misma
+            if str(parent_oid) == folder_id:
+                raise ValidationException("No se puede mover una carpeta dentro de sí misma")
+
+            new_parent_path = parent_folder["path"]
+            parent_folder_id = parent_oid
+        else:
+            parent_folder_id = None
+
+        # Verificar que no exista una carpeta con el mismo nombre en el destino
+        existing_folder = await folder_collection.find_one(
+            {"name": folder["name"], "parent_folder_id": parent_folder_id, "owner": current_user.get("username"), "_id": {"$ne": folder_oid}}
+        )
+        if existing_folder:
+            raise ConflictException("Ya existe una carpeta con ese nombre en el destino")
+
+        # Construir nueva ruta
+        new_path = f"{new_parent_path.rstrip('/')}/{folder['name']}/"
+
+        # Actualizar carpeta
+        update_result = await folder_collection.update_one({"_id": folder_oid}, {"$set": {"parent_folder_id": parent_folder_id, "path": new_path}})
+
+        if update_result.matched_count == 0:
+            raise NotFoundException("Carpeta no encontrada")
+
+        # Actualizar rutas de subcarpetas y archivos recursivamente
+        await FolderService._update_paths_recursively(folder_oid, new_path)
+
+        updated_folder = await folder_collection.find_one({"_id": folder_oid})
+        return updated_folder
+
+    @staticmethod
+    async def copy_folder(folder_id: str, parent_folder_id: Optional[str], current_user: dict) -> dict:
+        """Copia una carpeta a otra ubicación"""
+        folder_oid = validate_object_id(folder_id, "ID de carpeta")
+        folder = await folder_collection.find_one({"_id": folder_oid})
+        FolderService._check_ownership(folder, current_user, "Carpeta no encontrada")
+
+        # Validar carpeta padre destino si se proporciona
+        new_parent_path = "/"
+        if parent_folder_id and parent_folder_id != "root":
+            parent_oid = validate_object_id(parent_folder_id, "ID de carpeta padre")
+            parent_folder = await folder_collection.find_one({"_id": parent_oid})
+            FolderService._check_ownership(parent_folder, current_user, "Carpeta padre no encontrada")
+            new_parent_path = parent_folder["path"]
+            parent_folder_id = parent_oid
+        else:
+            parent_folder_id = None
+
+        # Generar nombre único si ya existe
+        base_name = folder["name"]
+        counter = 1
+        new_name = base_name
+        while await folder_collection.find_one({"name": new_name, "parent_folder_id": parent_folder_id, "owner": current_user.get("username")}):
+            new_name = f"{base_name} ({counter})"
+            counter += 1
+
+        # Construir nueva ruta
+        new_path = f"{new_parent_path.rstrip('/')}/{new_name}/"
+
+        try:
+            # Crear nueva carpeta
+            new_folder_metadata = {
+                "name": new_name,
+                "parent_folder_id": parent_folder_id,
+                "created_date": datetime.utcnow(),
+                "path": new_path,
+                "owner": current_user.get("username"),
+            }
+
+            result = await folder_collection.insert_one(new_folder_metadata)
+            new_folder_id = result.inserted_id
+
+            # Copiar contenido recursivamente
+            await FolderService._copy_folder_content(folder_oid, new_folder_id, new_path, current_user)
+
+            copied_folder = await folder_collection.find_one({"_id": new_folder_id})
+            return copied_folder
+
+        except Exception as e:
+            raise InternalServerException(f"Error al copiar la carpeta: {str(e)}")
+
+    @staticmethod
+    async def _update_paths_recursively(folder_id: ObjectId, new_path: str):
+        """Actualiza las rutas de subcarpetas y archivos recursivamente"""
+        # Actualizar archivos en esta carpeta
+        await file_collection.update_many({"folder_id": folder_id}, {"$set": {"path": new_path}})
+
+        # Actualizar subcarpetas
+        subfolders = await folder_collection.find({"parent_folder_id": folder_id}).to_list(1000)
+        for subfolder in subfolders:
+            subfolder_new_path = f"{new_path.rstrip('/')}/{subfolder['name']}/"
+            await folder_collection.update_one({"_id": subfolder["_id"]}, {"$set": {"path": subfolder_new_path}})
+            # Recursión para subcarpetas
+            await FolderService._update_paths_recursively(subfolder["_id"], subfolder_new_path)
+
+    @staticmethod
+    async def _copy_folder_content(source_folder_id: ObjectId, dest_folder_id: ObjectId, dest_path: str, current_user: dict):
+        """Copia el contenido de una carpeta recursivamente"""
+        from app.services.file_service import FileService
+
+        # Copiar archivos
+        files = await file_collection.find({"folder_id": source_folder_id}).to_list(1000)
+        for file_doc in files:
+            try:
+                # Copiar archivo en MinIO
+                original_object_name = file_doc["object_name"]
+                new_object_name = f"{ObjectId()}-{file_doc['filename']}"
+
+                # Usar copy_object con la sintaxis correcta de MinIO
+                minio_client.copy_object(settings.BUCKET_NAME, new_object_name, CopySource(settings.BUCKET_NAME, original_object_name))
+
+                # Crear nueva entrada de archivo
+                new_file_metadata = {
+                    "filename": file_doc["filename"],
+                    "size": file_doc["size"],
+                    "upload_date": datetime.utcnow(),
+                    "file_type": file_doc["file_type"],
+                    "object_name": new_object_name,
+                    "folder_id": dest_folder_id,
+                    "path": dest_path,
+                    "owner": current_user.get("username"),
+                }
+                await file_collection.insert_one(new_file_metadata)
+            except Exception:
+                continue  # Si falla un archivo, continuar con los demás
+
+        # Copiar subcarpetas recursivamente
+        subfolders = await folder_collection.find({"parent_folder_id": source_folder_id}).to_list(1000)
+        for subfolder in subfolders:
+            subfolder_new_path = f"{dest_path.rstrip('/')}/{subfolder['name']}/"
+
+            # Crear subcarpeta
+            new_subfolder_metadata = {
+                "name": subfolder["name"],
+                "parent_folder_id": dest_folder_id,
+                "created_date": datetime.utcnow(),
+                "path": subfolder_new_path,
+                "owner": current_user.get("username"),
+            }
+            result = await folder_collection.insert_one(new_subfolder_metadata)
+            new_subfolder_id = result.inserted_id
+
+            # Copiar contenido de la subcarpeta
+            await FolderService._copy_folder_content(subfolder["_id"], new_subfolder_id, subfolder_new_path, current_user)
