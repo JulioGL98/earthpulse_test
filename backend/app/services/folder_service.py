@@ -13,13 +13,8 @@ from app.utils.validators import validate_object_id
 
 
 class FolderService:
-    """Servicio para manejo de carpetas"""
-
     @staticmethod
-    def _check_ownership(
-        resource: Optional[dict], current_user: dict, not_found_message: str = "Recurso no encontrado"
-    ):
-        """Verifica permisos de acceso a un recurso"""
+    def _check_ownership(resource: Optional[dict], current_user: dict, not_found_message: str = "Recurso no encontrado"):
         if not resource:
             raise NotFoundException(not_found_message)
         if AuthService.is_admin(current_user):
@@ -32,8 +27,6 @@ class FolderService:
 
     @staticmethod
     async def create_folder(folder_data: CreateFolder, current_user: dict) -> dict:
-        """Crea una nueva carpeta"""
-        # Validar que no exista una carpeta con el mismo nombre en el mismo directorio
         query = {"name": folder_data.name, "owner": current_user.get("username")}
         if folder_data.parent_folder_id:
             parent_oid = validate_object_id(folder_data.parent_folder_id, "ID de carpeta padre")
@@ -45,14 +38,12 @@ class FolderService:
         if existing_folder:
             raise ConflictException("Ya existe una carpeta con ese nombre en este directorio")
 
-        # Validar carpeta padre si se proporciona
         parent_path = "/"
         if folder_data.parent_folder_id:
             parent_folder = await folder_collection.find_one({"_id": parent_oid})
             FolderService._check_ownership(parent_folder, current_user, "Carpeta padre no encontrada")
             parent_path = parent_folder["path"]
 
-        # Construir ruta completa
         new_path = f"{parent_path.rstrip('/')}/{folder_data.name}/"
 
         folder_metadata = {
@@ -69,10 +60,8 @@ class FolderService:
 
     @staticmethod
     async def list_folders(current_user: dict, parent_folder_id: Optional[str] = None) -> List[dict]:
-        """Lista carpetas en un directorio específico"""
         query = {}
 
-        # Filtrar por ownership a menos que sea admin
         if not AuthService.is_admin(current_user):
             query["owner"] = current_user.get("username")
 
@@ -90,7 +79,6 @@ class FolderService:
 
     @staticmethod
     async def get_folder(folder_id: str, current_user: dict) -> dict:
-        """Obtiene información de una carpeta específica"""
         folder_oid = validate_object_id(folder_id, "ID de carpeta")
         folder = await folder_collection.find_one({"_id": folder_oid})
         FolderService._check_ownership(folder, current_user, "Carpeta no encontrada")
@@ -98,11 +86,8 @@ class FolderService:
 
     @staticmethod
     async def get_folder_content(folder_id: str, current_user: dict) -> dict:
-        """Obtiene el contenido completo de una carpeta"""
         # Base queries para carpetas y archivos
-        base_folder_query = {
-            "parent_folder_id": None if folder_id == "root" else validate_object_id(folder_id, "ID de carpeta")
-        }
+        base_folder_query = {"parent_folder_id": None if folder_id == "root" else validate_object_id(folder_id, "ID de carpeta")}
         base_file_query = {"folder_id": None if folder_id == "root" else validate_object_id(folder_id, "ID de carpeta")}
 
         # Filtrar por ownership a menos que sea admin
@@ -110,11 +95,9 @@ class FolderService:
             base_folder_query["owner"] = current_user.get("username")
             base_file_query["owner"] = current_user.get("username")
 
-        # Obtener carpetas y archivos
         folders = await folder_collection.find(base_folder_query).to_list(1000)
         files = await file_collection.find(base_file_query).to_list(1000)
 
-        # Convertir ObjectId a string para serialización JSON
         for folder in folders:
             folder["_id"] = str(folder["_id"])
             if folder.get("parent_folder_id"):
@@ -191,9 +174,7 @@ class FolderService:
         new_path = f"{new_parent_path.rstrip('/')}/{folder['name']}/"
 
         # Actualizar carpeta
-        update_result = await folder_collection.update_one(
-            {"_id": folder_oid}, {"$set": {"parent_folder_id": parent_folder_id, "path": new_path}}
-        )
+        update_result = await folder_collection.update_one({"_id": folder_oid}, {"$set": {"parent_folder_id": parent_folder_id, "path": new_path}})
 
         if update_result.matched_count == 0:
             raise NotFoundException("Carpeta no encontrada")
@@ -226,9 +207,7 @@ class FolderService:
         base_name = folder["name"]
         counter = 1
         new_name = base_name
-        while await folder_collection.find_one(
-            {"name": new_name, "parent_folder_id": parent_folder_id, "owner": current_user.get("username")}
-        ):
+        while await folder_collection.find_one({"name": new_name, "parent_folder_id": parent_folder_id, "owner": current_user.get("username")}):
             new_name = f"{base_name} ({counter})"
             counter += 1
 
@@ -272,9 +251,7 @@ class FolderService:
             await FolderService._update_paths_recursively(subfolder["_id"], subfolder_new_path)
 
     @staticmethod
-    async def _copy_folder_content(
-        source_folder_id: ObjectId, dest_folder_id: ObjectId, dest_path: str, current_user: dict
-    ):
+    async def _copy_folder_content(source_folder_id: ObjectId, dest_folder_id: ObjectId, dest_path: str, current_user: dict):
         """Copia el contenido de una carpeta recursivamente"""
         from app.services.file_service import FileService
 
@@ -287,9 +264,7 @@ class FolderService:
                 new_object_name = f"{ObjectId()}-{file_doc['filename']}"
 
                 # Usar copy_object con la sintaxis correcta de MinIO
-                minio_client.copy_object(
-                    settings.BUCKET_NAME, new_object_name, CopySource(settings.BUCKET_NAME, original_object_name)
-                )
+                minio_client.copy_object(settings.BUCKET_NAME, new_object_name, CopySource(settings.BUCKET_NAME, original_object_name))
 
                 # Crear nueva entrada de archivo
                 new_file_metadata = {
@@ -323,6 +298,4 @@ class FolderService:
             new_subfolder_id = result.inserted_id
 
             # Copiar contenido de la subcarpeta
-            await FolderService._copy_folder_content(
-                subfolder["_id"], new_subfolder_id, subfolder_new_path, current_user
-            )
+            await FolderService._copy_folder_content(subfolder["_id"], new_subfolder_id, subfolder_new_path, current_user)

@@ -10,14 +10,12 @@ from app.middleware.auth import AuthMiddleware
 from app.routers import auth, files, folders, health
 from app.utils.security import get_password_hash
 
-# Crear aplicación FastAPI
 app = FastAPI(
     title=settings.API_TITLE,
     description=settings.API_DESCRIPTION,
     version=settings.API_VERSION,
 )
 
-# Configurar CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
@@ -27,15 +25,11 @@ app.add_middleware(
 )
 
 
-# Middleware de autenticación
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    """Middleware de autenticación para proteger rutas"""
-    # Verificar si es una ruta pública
     if AuthMiddleware.is_public_route(request.url.path, request.method):
         return await call_next(request)
 
-    # Obtener y validar usuario
     try:
         user = await AuthMiddleware.get_current_user(request)
         request.state.user = user
@@ -54,11 +48,8 @@ app.include_router(folders.router)
 
 @app.on_event("startup")
 async def startup_event():
-    """Eventos de inicio de la aplicación"""
-    # Crear bucket de MinIO si no existe
     create_bucket_if_not_exists()
 
-    # Crear usuario admin si no existe
     admin = await user_collection.find_one({"username": "admin"})
     if not admin:
         await user_collection.insert_one(
@@ -71,7 +62,6 @@ async def startup_event():
         )
         print("Usuario admin creado: admin / admin123")
     else:
-        # Asegurar que el admin tenga el rol correcto
         if admin.get("role") != "admin":
             await user_collection.update_one({"_id": admin["_id"]}, {"$set": {"role": "admin"}})
 

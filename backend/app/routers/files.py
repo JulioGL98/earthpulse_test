@@ -16,7 +16,6 @@ async def upload_file(
     folder_id: Optional[str] = Form(None),
     current_user: dict = Depends(AuthMiddleware.get_current_user),
 ):
-    """Sube un archivo al sistema de almacenamiento"""
     return await FileService.upload_file(file, current_user, folder_id)
 
 
@@ -26,19 +25,14 @@ async def list_files(
     search: Optional[str] = None,
     current_user: dict = Depends(AuthMiddleware.get_current_user),
 ):
-    """Lista archivos con filtros opcionales"""
     return await FileService.list_files(current_user, folder_id, search)
 
 
 @router.get("/download/{file_id}")
-async def download_file(
-    file_id: str, inline: Optional[bool] = False, current_user: dict = Depends(AuthMiddleware.get_current_user)
-):
-    """Descarga un archivo o lo muestra inline para preview"""
+async def download_file(file_id: str, inline: Optional[bool] = False, current_user: dict = Depends(AuthMiddleware.get_current_user)):
     file_doc = await FileService.get_file(file_id, current_user)
     response = FileService.get_file_stream(file_doc)
 
-    # Configurar headers según el tipo de archivo y parámetro inline
     headers = {}
     if inline and file_doc["file_type"] in [
         "application/pdf",
@@ -56,27 +50,21 @@ async def download_file(
 
 
 @router.put("/edit/{file_id}", response_model=FileMetadata)
-async def edit_file_name(
-    file_id: str, file_update: UpdateFileName, current_user: dict = Depends(AuthMiddleware.get_current_user)
-):
-    """Edita el nombre de un archivo"""
+async def edit_file_name(file_id: str, file_update: UpdateFileName, current_user: dict = Depends(AuthMiddleware.get_current_user)):
     return await FileService.update_filename(file_id, file_update, current_user)
 
 
 @router.delete("/delete/{file_id}", status_code=204)
 async def delete_file(file_id: str, current_user: dict = Depends(AuthMiddleware.get_current_user)):
-    """Elimina un archivo"""
     await FileService.delete_file(file_id, current_user)
     return
 
 
 @router.patch("/{file_id}/move", response_model=FileMetadata)
 async def move_file(file_id: str, move_data: MoveFile, current_user: dict = Depends(AuthMiddleware.get_current_user)):
-    """Mueve un archivo a otra carpeta"""
     return await FileService.move_file(file_id, move_data.folder_id, current_user)
 
 
 @router.post("/{file_id}/copy", response_model=FileMetadata, status_code=201)
 async def copy_file(file_id: str, copy_data: CopyFile, current_user: dict = Depends(AuthMiddleware.get_current_user)):
-    """Copia un archivo a otra carpeta"""
     return await FileService.copy_file(file_id, copy_data.folder_id, current_user)

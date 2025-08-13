@@ -15,9 +15,7 @@ from app.utils.validators import validate_object_id
 
 class FileService:
     @staticmethod
-    def _check_ownership(
-        resource: Optional[dict], current_user: dict, not_found_message: str = "Recurso no encontrado"
-    ):
+    def _check_ownership(resource: Optional[dict], current_user: dict, not_found_message: str = "Recurso no encontrado"):
         if not resource:
             raise NotFoundException(not_found_message)
         if AuthService.is_admin(current_user):
@@ -26,7 +24,7 @@ class FileService:
         if owner is None:
             raise NotFoundException(not_found_message)
         if owner != current_user.get("username"):
-            raise NotFoundException(not_found_message)  # Por seguridad, devolver 404 en lugar de 403
+            raise NotFoundException(not_found_message)
 
     @staticmethod
     async def upload_file(file: UploadFile, current_user: dict, folder_id: Optional[str] = None) -> dict:
@@ -76,9 +74,7 @@ class FileService:
             raise InternalServerException(f"Error al subir el archivo: {str(e)}")
 
     @staticmethod
-    async def list_files(
-        current_user: dict, folder_id: Optional[str] = None, search: Optional[str] = None
-    ) -> List[dict]:
+    async def list_files(current_user: dict, folder_id: Optional[str] = None, search: Optional[str] = None) -> List[dict]:
         query = {}
 
         if not AuthService.is_admin(current_user):
@@ -106,14 +102,11 @@ class FileService:
 
     @staticmethod
     async def update_filename(file_id: str, update_data: UpdateFileName, current_user: dict) -> dict:
-        """Actualiza el nombre de un archivo"""
         file_oid = validate_object_id(file_id, "ID de archivo")
         file_doc = await file_collection.find_one({"_id": file_oid})
         FileService._check_ownership(file_doc, current_user, "Archivo no encontrado")
 
-        update_result = await file_collection.update_one(
-            {"_id": file_oid}, {"$set": {"filename": update_data.new_filename}}
-        )
+        update_result = await file_collection.update_one({"_id": file_oid}, {"$set": {"filename": update_data.new_filename}})
 
         if update_result.matched_count == 0:
             raise NotFoundException("Archivo no encontrado")
@@ -123,22 +116,18 @@ class FileService:
 
     @staticmethod
     async def delete_file(file_id: str, current_user: dict):
-        """Elimina un archivo"""
         file_oid = validate_object_id(file_id, "ID de archivo")
         file_doc = await file_collection.find_one({"_id": file_oid})
         FileService._check_ownership(file_doc, current_user, "Archivo no encontrado")
 
         try:
-            # Eliminar de MinIO
             minio_client.remove_object(settings.BUCKET_NAME, file_doc["object_name"])
-            # Eliminar de MongoDB
             await file_collection.delete_one({"_id": file_oid})
         except Exception as e:
             raise InternalServerException(f"Error al eliminar el archivo: {str(e)}")
 
     @staticmethod
     def get_file_stream(file_doc: dict):
-        """Obtiene el stream de un archivo desde MinIO"""
         try:
             return minio_client.get_object(settings.BUCKET_NAME, file_doc["object_name"])
         except Exception as e:
@@ -146,12 +135,10 @@ class FileService:
 
     @staticmethod
     async def move_file(file_id: str, folder_id: Optional[str], current_user: dict) -> dict:
-        """Mueve un archivo a otra carpeta"""
         file_oid = validate_object_id(file_id, "ID de archivo")
         file_doc = await file_collection.find_one({"_id": file_oid})
         FileService._check_ownership(file_doc, current_user, "Archivo no encontrado")
 
-        # Validar carpeta destino si se proporciona
         new_folder_path = "/"
         if folder_id and folder_id != "root":
             folder_oid = validate_object_id(folder_id, "ID de carpeta destino")
@@ -162,10 +149,7 @@ class FileService:
         else:
             folder_id = None
 
-        # Actualizar archivo
-        update_result = await file_collection.update_one(
-            {"_id": file_oid}, {"$set": {"folder_id": folder_id, "path": new_folder_path}}
-        )
+        update_result = await file_collection.update_one({"_id": file_oid}, {"$set": {"folder_id": folder_id, "path": new_folder_path}})
 
         if update_result.matched_count == 0:
             raise NotFoundException("Archivo no encontrado")
@@ -175,12 +159,10 @@ class FileService:
 
     @staticmethod
     async def copy_file(file_id: str, folder_id: Optional[str], current_user: dict) -> dict:
-        """Copia un archivo a otra carpeta"""
         file_oid = validate_object_id(file_id, "ID de archivo")
         file_doc = await file_collection.find_one({"_id": file_oid})
         FileService._check_ownership(file_doc, current_user, "Archivo no encontrado")
 
-        # Validar carpeta destino si se proporciona
         new_folder_path = "/"
         if folder_id and folder_id != "root":
             folder_oid = validate_object_id(folder_id, "ID de carpeta destino")
@@ -192,16 +174,11 @@ class FileService:
             folder_id = None
 
         try:
-            # Copiar archivo en MinIO
             original_object_name = file_doc["object_name"]
             new_object_name = f"{ObjectId()}-{file_doc['filename']}"
 
-            # Usar copy_object con la sintaxis correcta de MinIO
-            minio_client.copy_object(
-                settings.BUCKET_NAME, new_object_name, CopySource(settings.BUCKET_NAME, original_object_name)
-            )
+            minio_client.copy_object(settings.BUCKET_NAME, new_object_name, CopySource(settings.BUCKET_NAME, original_object_name))
 
-            # Crear nueva entrada en MongoDB
             new_file_metadata = {
                 "filename": file_doc["filename"],
                 "size": file_doc["size"],
