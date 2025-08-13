@@ -6,7 +6,7 @@ from app.utils.exceptions import NotFoundException
 
 class BaseService:
     """Clase base para servicios con funcionalidades comunes"""
-    
+
     @staticmethod
     def _check_ownership(
         resource: Optional[dict], current_user: dict, not_found_message: str = "Recurso no encontrado"
