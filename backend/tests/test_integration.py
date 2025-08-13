@@ -30,7 +30,7 @@ class TestSecurityValidation:
             ("GET", "/folders"),
             ("POST", "/folders"),
         ]
-        
+
         for method, endpoint in endpoints_to_test:
             try:
                 if method == "GET":
@@ -77,9 +77,9 @@ class TestBusinessLogicValidation:
         # Test que los modelos se pueden importar correctamente
         try:
             from app.models.file import FileMetadata
-            from app.models.folder import FolderMetadata  
+            from app.models.folder import FolderMetadata
             from app.models.user import UserInDB
-            
+
             # Si llegamos aquí, los modelos están disponibles
             assert True
         except ImportError:

@@ -41,7 +41,7 @@ class TestFileEndpoints:
         """Test listar archivos cuando no hay ninguno"""
         with patch("app.services.file_service.FileService.list_files") as mock_list_files:
             mock_list_files.return_value = []
-            
+
             try:
                 response = client.get("/files", headers={"Authorization": "Bearer fake_token"})
                 if response.status_code == 200:
@@ -73,7 +73,7 @@ class TestFileEndpoints:
 
         with patch("app.services.file_service.FileService.upload_file") as mock_upload:
             from bson import ObjectId
-            
+
             mock_upload.return_value = {
                 "_id": str(ObjectId()),
                 "filename": "test.txt",
@@ -158,7 +158,7 @@ class TestFolderEndpoints:
         """Test listar carpetas cuando no hay ninguna"""
         with patch("app.services.folder_service.FolderService.list_folders") as mock_list_folders:
             mock_list_folders.return_value = []
-            
+
             try:
                 response = client.get("/folders", headers={"Authorization": "Bearer fake_token"})
                 if response.status_code == 200:
@@ -170,7 +170,6 @@ class TestFolderEndpoints:
             except Exception:
                 pytest.skip("Folder service not accessible")
 
-
     def test_create_folder_success(self, client, mock_auth):
         """Test crear carpeta exitosamente"""
         folder_data = {"name": "Test Folder"}
@@ -180,10 +179,10 @@ class TestFolderEndpoints:
 
             folder_id = str(ObjectId())
             mock_create.return_value = {
-                "_id": folder_id, 
-                "name": "Test Folder", 
-                "path": "/Test Folder/", 
-                "owner": "testuser"
+                "_id": folder_id,
+                "name": "Test Folder",
+                "path": "/Test Folder/",
+                "owner": "testuser",
             }
 
             try:
@@ -228,13 +227,8 @@ class TestFolderEndpoints:
     def test_get_folder_content_root(self, client, mock_db_client, mock_auth):
         """Test obtener contenido de carpeta raíz"""
         with patch("app.services.folder_service.FolderService.get_folder_content") as mock_content:
-            mock_content.return_value = {
-                "folders": [],
-                "files": [],
-                "folder_id": "root",
-                "total_items": 0
-            }
-            
+            mock_content.return_value = {"folders": [], "files": [], "folder_id": "root", "total_items": 0}
+
             try:
                 response = client.get("/folders/root/content", headers={"Authorization": "Bearer fake_token"})
                 if response.status_code == 200:

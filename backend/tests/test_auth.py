@@ -23,6 +23,7 @@ class TestAuthEndpoints:
         with patch("app.services.auth_service.AuthService.create_user") as mock_create_user:
             # Mock user already exists
             from app.utils.exceptions import ConflictException
+
             mock_create_user.side_effect = ConflictException("El usuario ya existe")
 
             response = client.post("/auth/register", json=user_data)
@@ -37,10 +38,7 @@ class TestAuthEndpoints:
 
         with patch("app.services.auth_service.AuthService.login_user") as mock_login:
             # Mock successful login
-            mock_login.return_value = {
-                "access_token": "fake_token",
-                "token_type": "bearer"
-            }
+            mock_login.return_value = {"access_token": "fake_token", "token_type": "bearer"}
 
             response = client.post("/auth/login", json=login_data)
 
@@ -59,6 +57,7 @@ class TestAuthEndpoints:
         with patch("app.services.auth_service.AuthService.login_user") as mock_login:
             # Mock invalid credentials
             from app.utils.exceptions import UnauthorizedException
+
             mock_login.side_effect = UnauthorizedException("Credenciales inválidas")
 
             response = client.post("/auth/login", json=login_data)
@@ -74,6 +73,7 @@ class TestAuthEndpoints:
         with patch("app.services.auth_service.AuthService.login_user") as mock_login:
             # Mock user doesn't exist
             from app.utils.exceptions import UnauthorizedException
+
             mock_login.side_effect = UnauthorizedException("Credenciales inválidas")
 
             response = client.post("/auth/login", json=login_data)
