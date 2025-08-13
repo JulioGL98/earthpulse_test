@@ -8,25 +8,12 @@ from app.config import settings
 from app.database import file_collection, folder_collection, minio_client
 from app.models.folder import CreateFolder, FolderMetadata
 from app.services.auth_service import AuthService
+from app.services.base_service import BaseService
 from app.utils.exceptions import ConflictException, InternalServerException, NotFoundException, ValidationException
 from app.utils.validators import validate_object_id
 
 
-class FolderService:
-    @staticmethod
-    def _check_ownership(
-        resource: Optional[dict], current_user: dict, not_found_message: str = "Recurso no encontrado"
-    ):
-        if not resource:
-            raise NotFoundException(not_found_message)
-        if AuthService.is_admin(current_user):
-            return
-        owner = resource.get("owner")
-        if owner is None:
-            raise NotFoundException(not_found_message)
-        if owner != current_user.get("username"):
-            raise NotFoundException(not_found_message)
-
+class FolderService(BaseService):
     @staticmethod
     async def create_folder(folder_data: CreateFolder, current_user: dict) -> dict:
         query = {"name": folder_data.name, "owner": current_user.get("username")}
