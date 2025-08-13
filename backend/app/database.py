@@ -10,7 +10,9 @@ file_collection = db.get_collection("files")
 folder_collection = db.get_collection("folders")
 user_collection = db.get_collection("users")
 
-minio_client = Minio(settings.MINIO_URL, access_key=settings.MINIO_ACCESS_KEY, secret_key=settings.MINIO_SECRET_KEY, secure=False)
+minio_client = Minio(
+    settings.MINIO_URL, access_key=settings.MINIO_ACCESS_KEY, secret_key=settings.MINIO_SECRET_KEY, secure=False
+)
 
 
 def create_bucket_if_not_exists():

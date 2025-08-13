@@ -29,7 +29,9 @@ async def list_files(
 
 
 @router.get("/download/{file_id}")
-async def download_file(file_id: str, inline: Optional[bool] = False, current_user: dict = Depends(AuthMiddleware.get_current_user)):
+async def download_file(
+    file_id: str, inline: Optional[bool] = False, current_user: dict = Depends(AuthMiddleware.get_current_user)
+):
     file_doc = await FileService.get_file(file_id, current_user)
     response = FileService.get_file_stream(file_doc)
 
@@ -50,7 +52,9 @@ async def download_file(file_id: str, inline: Optional[bool] = False, current_us
 
 
 @router.put("/edit/{file_id}", response_model=FileMetadata)
-async def edit_file_name(file_id: str, file_update: UpdateFileName, current_user: dict = Depends(AuthMiddleware.get_current_user)):
+async def edit_file_name(
+    file_id: str, file_update: UpdateFileName, current_user: dict = Depends(AuthMiddleware.get_current_user)
+):
     return await FileService.update_filename(file_id, file_update, current_user)
 
 

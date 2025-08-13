@@ -15,7 +15,9 @@ from app.utils.validators import validate_object_id
 
 class FileService:
     @staticmethod
-    def _check_ownership(resource: Optional[dict], current_user: dict, not_found_message: str = "Recurso no encontrado"):
+    def _check_ownership(
+        resource: Optional[dict], current_user: dict, not_found_message: str = "Recurso no encontrado"
+    ):
         if not resource:
             raise NotFoundException(not_found_message)
         if AuthService.is_admin(current_user):
@@ -74,7 +76,9 @@ class FileService:
             raise InternalServerException(f"Error al subir el archivo: {str(e)}")
 
     @staticmethod
-    async def list_files(current_user: dict, folder_id: Optional[str] = None, search: Optional[str] = None) -> List[dict]:
+    async def list_files(
+        current_user: dict, folder_id: Optional[str] = None, search: Optional[str] = None
+    ) -> List[dict]:
         query = {}
 
         if not AuthService.is_admin(current_user):
@@ -106,7 +110,9 @@ class FileService:
         file_doc = await file_collection.find_one({"_id": file_oid})
         FileService._check_ownership(file_doc, current_user, "Archivo no encontrado")
 
-        update_result = await file_collection.update_one({"_id": file_oid}, {"$set": {"filename": update_data.new_filename}})
+        update_result = await file_collection.update_one(
+            {"_id": file_oid}, {"$set": {"filename": update_data.new_filename}}
+        )
 
         if update_result.matched_count == 0:
             raise NotFoundException("Archivo no encontrado")
@@ -149,7 +155,9 @@ class FileService:
         else:
             folder_id = None
 
-        update_result = await file_collection.update_one({"_id": file_oid}, {"$set": {"folder_id": folder_id, "path": new_folder_path}})
+        update_result = await file_collection.update_one(
+            {"_id": file_oid}, {"$set": {"folder_id": folder_id, "path": new_folder_path}}
+        )
 
         if update_result.matched_count == 0:
             raise NotFoundException("Archivo no encontrado")
@@ -177,7 +185,9 @@ class FileService:
             original_object_name = file_doc["object_name"]
             new_object_name = f"{ObjectId()}-{file_doc['filename']}"
 
-            minio_client.copy_object(settings.BUCKET_NAME, new_object_name, CopySource(settings.BUCKET_NAME, original_object_name))
+            minio_client.copy_object(
+                settings.BUCKET_NAME, new_object_name, CopySource(settings.BUCKET_NAME, original_object_name)
+            )
 
             new_file_metadata = {
                 "filename": file_doc["filename"],

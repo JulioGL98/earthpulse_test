@@ -15,7 +15,9 @@ async def create_folder(folder: CreateFolder, current_user: dict = Depends(AuthM
 
 
 @router.get("", response_model=List[FolderMetadata])
-async def list_folders(parent_folder_id: Optional[str] = None, current_user: dict = Depends(AuthMiddleware.get_current_user)):
+async def list_folders(
+    parent_folder_id: Optional[str] = None, current_user: dict = Depends(AuthMiddleware.get_current_user)
+):
     """Lista carpetas en un directorio específico"""
     return await FolderService.list_folders(current_user, parent_folder_id)
 
@@ -37,10 +39,14 @@ async def delete_folder(folder_id: str, current_user: dict = Depends(AuthMiddlew
 
 
 @router.patch("/{folder_id}/move", response_model=FolderMetadata)
-async def move_folder(folder_id: str, move_data: MoveFolder, current_user: dict = Depends(AuthMiddleware.get_current_user)):
+async def move_folder(
+    folder_id: str, move_data: MoveFolder, current_user: dict = Depends(AuthMiddleware.get_current_user)
+):
     return await FolderService.move_folder(folder_id, move_data.parent_folder_id, current_user)
 
 
 @router.post("/{folder_id}/copy", response_model=FolderMetadata, status_code=201)
-async def copy_folder(folder_id: str, copy_data: CopyFolder, current_user: dict = Depends(AuthMiddleware.get_current_user)):
+async def copy_folder(
+    folder_id: str, copy_data: CopyFolder, current_user: dict = Depends(AuthMiddleware.get_current_user)
+):
     return await FolderService.copy_folder(folder_id, copy_data.parent_folder_id, current_user)
