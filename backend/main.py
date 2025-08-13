@@ -1,12 +1,14 @@
 from datetime import datetime
+
 import uvicorn
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.config import settings
 from app.database import create_bucket_if_not_exists, user_collection
-from app.utils.security import get_password_hash
 from app.middleware.auth import AuthMiddleware
-from app.routers import health, auth, files, folders
+from app.routers import auth, files, folders, health
+from app.utils.security import get_password_hash
 
 # Crear aplicación FastAPI
 app = FastAPI(

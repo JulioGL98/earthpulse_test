@@ -1,9 +1,11 @@
 from typing import List, Optional
+
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import StreamingResponse
-from app.models.file import FileMetadata, UpdateFileName, MoveFile, CopyFile
-from app.services.file_service import FileService
+
 from app.middleware.auth import AuthMiddleware
+from app.models.file import CopyFile, FileMetadata, MoveFile, UpdateFileName
+from app.services.file_service import FileService
 
 router = APIRouter(prefix="/files", tags=["Files"])
 

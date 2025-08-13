@@ -1,5 +1,6 @@
 from fastapi import APIRouter
-from app.models.user import UserCreate, LoginRequest, Token
+
+from app.models.user import LoginRequest, Token, UserCreate
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["Auth"])

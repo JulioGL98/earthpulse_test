@@ -1,6 +1,7 @@
-from fastapi import Request, HTTPException
-from app.utils.security import decode_access_token
+from fastapi import HTTPException, Request
+
 from app.services.auth_service import AuthService
+from app.utils.security import decode_access_token
 
 
 class AuthMiddleware:

@@ -5,8 +5,8 @@ from bson import ObjectId
 from pydantic import ValidationError
 
 from app.models.file import FileMetadata, UpdateFileName
-from app.models.folder import FolderMetadata, CreateFolder
-from app.models.user import UserBase, UserCreate, UserInDB, LoginRequest, Token
+from app.models.folder import CreateFolder, FolderMetadata
+from app.models.user import LoginRequest, Token, UserBase, UserCreate, UserInDB
 
 
 class TestModels:

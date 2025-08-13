@@ -1,8 +1,10 @@
 from typing import List, Optional
+
 from fastapi import APIRouter, Depends
-from app.models.folder import FolderMetadata, CreateFolder, MoveFolder, CopyFolder
-from app.services.folder_service import FolderService
+
 from app.middleware.auth import AuthMiddleware
+from app.models.folder import CopyFolder, CreateFolder, FolderMetadata, MoveFolder
+from app.services.folder_service import FolderService
 
 router = APIRouter(prefix="/folders", tags=["Folders"])
 

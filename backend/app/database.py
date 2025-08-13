@@ -1,5 +1,6 @@
-from motor.motor_asyncio import AsyncIOMotorClient
 from minio import Minio
+from motor.motor_asyncio import AsyncIOMotorClient
+
 from app.config import settings
 
 # MongoDB Connection

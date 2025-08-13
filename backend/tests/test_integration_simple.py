@@ -1,9 +1,11 @@
 """Tests de integración simplificados para la nueva estructura modular"""
 
 from unittest.mock import AsyncMock, patch
+
 import pytest
 from bson import ObjectId
 from fastapi.testclient import TestClient
+
 from main_test import app
 
 

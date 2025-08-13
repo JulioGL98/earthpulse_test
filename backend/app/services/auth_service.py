@@ -1,8 +1,9 @@
 from typing import Optional
+
 from app.database import user_collection
-from app.utils.security import verify_password, get_password_hash, create_access_token
-from app.utils.exceptions import UnauthorizedException, ConflictException
-from app.models.user import UserCreate, Token
+from app.models.user import Token, UserCreate
+from app.utils.exceptions import ConflictException, UnauthorizedException
+from app.utils.security import create_access_token, get_password_hash, verify_password
 
 
 class AuthService:

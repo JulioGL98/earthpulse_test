@@ -1,5 +1,7 @@
-from bson import ObjectId
 from typing import Optional
+
+from bson import ObjectId
+
 from app.utils.exceptions import ValidationException
 
 
