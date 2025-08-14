@@ -262,6 +262,13 @@ pytest tests/ --cov=. --cov-report=html
 # Abre coverage_html/index.html para ver el reporte
 ```
 
+### Tests del Frontend
+```bash
+cd frontend
+npm run test          # Ejecutar tests
+npm run test:watch    # Tests en modo watch
+```
+
 ## Solución de Problemas Comunes
 
 ### Error: Puerto ya en uso
