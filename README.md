@@ -36,16 +36,7 @@ El proyecto utiliza una arquitectura de microservicios dockerizada:
    cd test
    ```
 
-2. **Crea las carpetas para los datos:**
-   ```bash
-   # En Windows (PowerShell)
-   mkdir data\mongodb, data\minio
-
-   # En Linux/Mac
-   mkdir -p data/mongodb data/minio
-   ```
-
-3. **Levanta todos los servicios:**
+2. **Levanta todos los servicios:**
    ```bash
    docker-compose up --build
    ```
@@ -55,7 +46,7 @@ El proyecto utiliza una arquitectura de microservicios dockerizada:
    docker-compose up --build -d
    ```
 
-4. **Verifica que todo esté funcionando:**
+3. **Verifica que todo esté funcionando:**
    ```bash
    docker-compose ps
    ```
