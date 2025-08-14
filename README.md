@@ -32,8 +32,8 @@ El proyecto utiliza una arquitectura de microservicios dockerizada:
 
 1. **Clona este repositorio:**
    ```bash
-   git clone https://github.com/tu-usuario/tu-repo.git
-   cd tu-repo
+   git clone https://github.com/JulioGL98/test.git
+   cd test
    ```
 
 2. **Crea las carpetas para los datos:**
