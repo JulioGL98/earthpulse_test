@@ -32,7 +32,7 @@ El proyecto utiliza una arquitectura de microservicios dockerizada:
 
 1. **Clona este repositorio:**
    ```bash
-   git clone https://github.com/JulioGL98/test.git
+   git clone https://github.com/JulioGL98/earthpulse_test.git
    cd test
    ```
 
